@@ -10,7 +10,7 @@
 
 > [!WARNING]
 > 使用前请注意以下四点边界：
-> 1. **Hook 目前只支持 Windows（PowerShell 5.1 / pwsh 7）**，默认配合 Git Bash 使用；如果在 macOS 或 Linux 下用，需要自己把 `pretool_guard.ps1` 的拦截正则和入口迁移成 Bash 或 Python 脚本。
+> 1. **完整安装只支持 Windows（PowerShell 5.1 / pwsh 7）**，默认配合 Git Bash 使用。macOS / Linux 目前只支持 Hook 层：用 `./install.sh` 安装 Node 版拦截脚本 `pretool_guard.cjs`，见下文[macOS / Linux 只装 Hook](#macos--linux-只装-hook)。
 > 2. **正则黑名单是安全网，不是沙箱，可以被绕过**。它用来拦住 Agent 常见的危险误操作，防不住换写法绕过或刻意构造的命令。
 > 3. **用 Ask-First 审批模式的人注意，默认 allow 分支会自动放行非黑名单命令**。`pretool_guard.ps1` 对没命中黑名单的命令默认返回 `{"decision":"allow"}`，这是配合 Antigravity 的 `autoExecutionPolicy = EAGER (Turbo)` 设计的；如果你开的是每次手动审批（Ask-First），不要直接原样启用该分支。
 > 4. 不要把本仓库所有 `.md` 文件拼接塞进同一个系统提示词（System Prompt / `GEMINI.md`）全量常驻。大模型有效注意力有限，全设为 `always_on` 不但白占数万 Token 推理空间，日常聊句简单问答也会触发繁琐的工程仪式并冲淡安全红线。正确用法是只让 `global/` 下约 90 行核心规则常驻，高危命令交给 `hooks/` 在进程级拦截（0 Token 开销），其余 `rules/`、`tone/` 和 `skills/` 由模型按场景触发读取。
@@ -51,6 +51,23 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 </details>
 
 `uninstall.ps1` 经 `y` 确认后，从最近一次 `~/.gemini/backup_antigravity_rules_*` 还原安装前已存在的文件，删掉安装时新建的脚本与插件目录，并在 `~/.gemini/config/config.json` 中只移除本仓库的 5 个插件条目（`anyi-global-rules`、`search-routing`、`docx-delivery`、`lieflat-less-ai-tone`、`humanizer-zh`），保留其余配置。
+
+### macOS / Linux 只装 Hook
+
+Mac 版 Antigravity 用的是同一套 hooks 协议：同样读 `~/.gemini/config/hooks.json`，payload 和 `{"decision": ...}` 返回格式一致，区别只是 hook 命令在 Unix 上经 `sh -c` 执行（Windows 上是 `cmd /c`）。所以 Hook 层可以等效搬过去，规则层、Skill 和文风层的安装脚本暂时还只有 Windows 版。
+
+```bash
+# 需要 Node.js >= 18；自检需要 python3（macOS 自带的即可）
+./install.sh                 # 等价于 install.ps1 -HookOnly，加 --force 跳过确认
+./uninstall.sh               # 从最近一次 hook-only 备份还原
+```
+
+和 Windows 版的区别：
+
+- 拦截脚本换成 [`hooks/scripts/pretool_guard.cjs`](./hooks/scripts/pretool_guard.cjs)。前 29 条规则与 `pretool_guard.ps1` 逐条一致，另外补了 macOS / Linux 的规则：`diskutil erase*`、`dd of=/dev/`、`mkfs` / `newfs_*`、`tmutil delete`、`csrutil disable`；结束代理客户端（`kill` / `pkill` / `killall`、`launchctl bootout/unload`、`systemctl stop`、`osascript ... quit`，覆盖 ClashX、Clash Verge、mihomo、sing-box、Surge、Stash 等）；修改网络与系统代理（`networksetup -set*`、`ifconfig ... down`、`ipconfig set`、`route delete/flush/change`、`pfctl -d/-F`、`nmcli ... off/down`）。只读命令（`networksetup -get*`、`scutil --proxy`、`pgrep`、`launchctl list`、`diskutil list`）照常放行。
+- 安装器会把 `hooks.json` 里的命令改写成 `"/opt/homebrew/bin/node" ./scripts/pretool_guard.cjs` 这种绝对路径形式。原因是从 Dock 启动的 Antigravity 不一定继承终端里的 PATH，直接写 `node` 可能找不到。
+- PowerShell 5.1 的 GBK 编码问题在 macOS / Linux 上不存在：Node 版按原始字节读 stdin 并按 UTF-8 解码。
+- 备份目录和 `manifest.json` 格式与 Windows 版相同（`mode: hook-only`）。`uninstall.sh` 只处理 hook-only 备份，完整安装请在 Windows 上用 `uninstall.ps1` 卸载。
 
 ---
 
@@ -93,6 +110,13 @@ python ~/.gemini/config/scripts/verify-hook.py
 
 自检脚本会把带中文用户名路径（`C:\Users\测试用户\...`）的真实 UTF-8 JSON 载荷通过 `stdin` 喂给 `powershell.exe`，覆盖 [`test-cases.txt`](./hooks/scripts/test-cases.txt) 的 16 项高危删改与常规命令、2 项中文路径编码回归用例、16 项本地代理与网络保护用例（13 项 `deny` + 3 项只读探测 `allow`），以及 6 项正常命令无状态重复放行用例。跑完除了要求 `TOTAL 40 / PASS 40 / FAIL 0`，还会检查 `hook_log.jsonl` 中的 `ERROR-FAILOPEN` 计数必须为 `0`，确认没有任何命令是因为解析失败被放行的。
 
+在 macOS / Linux 上（或在 Windows 上加 `--guard node`）运行时，自检对象换成 `pretool_guard.cjs`，并额外跑 SECTION 5 的 38 项 macOS / Linux 用例（27 项 `deny` + 11 项只读或普通命令 `allow`），合计 `TOTAL 78`：
+
+```bash
+python3 ~/.gemini/config/scripts/verify-hook.py              # macOS / Linux 默认测 Node 版
+python verify-hook.py --guard node                            # Windows 上测 Node 版
+```
+
 ---
 
 ## 五层架构
@@ -122,8 +146,10 @@ flowchart TD
 | :--- | :--- | :--- | :--- | :--- |
 | [`install.ps1`](./install.ps1) | 仓库根目录执行（一键部署入口） | 自动化部署 (`root`) | 手动执行（首次安装或更新规则时） | 预先校验 `config.json`/`hooks.json` 语法、列出待修改项并经 `y` 确认（支持 `-Force`）、自动备份原配置、替换 `<YOUR_PATH>`、按标记/顶层键无损合并 `GEMINI.md` 与 `hooks.json`、分发 5 层文件、启用 5 个插件并跑通 `verify-hook.py` 自检。 |
 | [`uninstall.ps1`](./uninstall.ps1) | 仓库根目录执行（一键卸载回滚） | 自动化部署 (`root`) | 手动执行（卸载或还原配置时） | 经 `y` 确认后（支持 `-Force`），从最近一次 `backup_antigravity_rules_*` 还原安装前已存在的文件，删除安装前不存在的文件与插件目录，并仅从 `config.json` 移除本仓库的 5 个插件条目。 |
+| [`install.sh`](./install.sh) / [`uninstall.sh`](./uninstall.sh) + [`hooks/unix/hooks-installer.mjs`](./hooks/unix/hooks-installer.mjs) | 仓库根目录执行（macOS / Linux） | 自动化部署 (`root`) | 手动执行（只装或卸载 Hook 层时） | 等价于 `install.ps1 -HookOnly` / `uninstall.ps1` 的 hook-only 分支：预校验 `hooks.json`、`y` 确认（支持 `--force`）、备份、按顶层键合并并把命令改写为 Node 绝对路径、部署 `scripts/`、跑 `verify-hook.py --guard node`。 |
 | [`hooks/hooks.json`](./hooks/hooks.json) | `~/.gemini/config/hooks.json` | 硬拦截 Hook (`hooks/`) | `PreToolUse` (`run_command`) / `PostToolUse` (读写检索工具) | 注册 `hard-gate` 危险命令硬拦截与 `read-loop` 重复读取检测钩子。 |
 | [`hooks/scripts/pretool_guard.ps1`](./hooks/scripts/pretool_guard.ps1) | `~/.gemini/config/scripts/pretool_guard.ps1` | 硬拦截 Hook (`hooks/`) | `PreToolUse`（每次 `run_command` 执行前同步触发） | 底层正则硬拦截递归强删（含 `rm -r -f`、`--recursive --force`、PowerShell `rm/ri -r -fo` 等）、`git reset --hard`/`push --force`、删注册表/格式化，以及杀代理进程、停 TUN 服务、断网或改系统代理命令（UTF-8 流解码 + Fail-open 审计日志）。 |
+| [`hooks/scripts/pretool_guard.cjs`](./hooks/scripts/pretool_guard.cjs) | `~/.gemini/config/scripts/pretool_guard.cjs` | 硬拦截 Hook (`hooks/`) | `PreToolUse`（macOS / Linux 安装时挂载） | `pretool_guard.ps1` 的 Node 跨平台版：29 条 Windows 规则逐条一致，另加 macOS / Linux 的磁盘、代理客户端与网络设置规则；同样 Fail-open 并写 `hook_log.jsonl`。 |
 | [`hooks/scripts/read_loop_guard.cjs`](./hooks/scripts/read_loop_guard.cjs) | `~/.gemini/config/scripts/read_loop_guard.cjs` | 硬拦截 Hook (`hooks/`) | `PostToolUse`（默认 `observe`）/ `PreToolUse`（`enforce` 未启用） | 监测同一会话内对未变更文件相同行号区间的重复读取。默认仅运行在 `observe`（诊断观察）模式；`enforce`（阻断拦截）模式尚未验证（`read_loop_settings.json` 中 `nativeCoverageVerified`、`rangeOutputVerified`、`permissionPolicyVerified` 三个 Verified 标志均为 `false`），标 `NOT_PROVEN`。 |
 | [`hooks/scripts/read_loop_settings.json`](./hooks/scripts/read_loop_settings.json) | `~/.gemini/config/scripts/read_loop_settings.json` | 硬拦截 Hook (`hooks/`) | 被 `read_loop_guard.cjs` 读取 | 配置重复读取检测模式（默认 `"mode": "observe"`，三个 Verified 标志均为 `false`，`enforce` 模式 `NOT_PROVEN`）与重复次数上限（`repeatLimit: 3`）。 |
 | [`hooks/scripts/verify-hook.py`](./hooks/scripts/verify-hook.py) + [`test-cases.txt`](./hooks/scripts/test-cases.txt) | `~/.gemini/config/scripts/` | 硬拦截 Hook (`hooks/`) | 手动执行（修改 `pretool_guard.ps1` 后运行自检） | 用含中文路径的真实 UTF-8 载荷、高危删改命令集与 代理/网络保护规则集（第 105–114 行）对 `pretool_guard.ps1` 做 40 项全量回归校验，确保拦截准确且无编码破损导致的静默放行。 |
@@ -246,7 +272,7 @@ flowchart TD
 ## 已知限制
 
 1. 宿主操作系统与 Shell 假定：
-   - `hooks/scripts/pretool_guard.ps1` 与 `WINDOWS-RELEASE.md` 主要针对 Windows 10/11（中文环境 PowerShell 5.1 / pwsh 7 + Git Bash）编写与实测。若在 macOS / Linux 下使用，需将 `pretool_guard.ps1` 的进程/服务拦截正则与 PowerShell 入口迁移为对应的 Bash / Python 守护脚本。
+   - `hooks/scripts/pretool_guard.ps1` 与 `WINDOWS-RELEASE.md` 主要针对 Windows 10/11（中文环境 PowerShell 5.1 / pwsh 7 + Git Bash）编写与实测。macOS / Linux 下的 Hook 层由 `install.sh` 安装 Node 版 `pretool_guard.cjs`，规则层、Skill 与文风层的安装脚本目前只有 Windows 版。
 2. Turbo 自动执行策略下的 Hook 行为说明：
    - `pretool_guard.ps1` 对未命中黑名单的命令默认返回 `{"decision":"allow"}`，这与 Antigravity 开启 `autoExecutionPolicy = EAGER (Turbo)` 的行为一致。如果你在客户端使用的是“每次执行命令前手动审批（Ask-First）”策略，请勿直接原样启用该 Hook 的默认 `allow` 分支，否则它会替你自动放行非黑名单命令。
 3. `read_loop_guard.cjs` 的 `enforce` 拦截模式尚未验证（`NOT_PROVEN`）：

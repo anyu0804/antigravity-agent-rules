@@ -13,29 +13,56 @@ that is pure ASCII never showed the bug, so testing with English paths alone
 proves nothing.
 
 This script therefore feeds real UTF-8 payloads - including Chinese paths - and
-asserts the verdict. Run it after ANY change to pretool_guard.ps1.
+asserts the verdict. Run it after ANY change to pretool_guard.ps1 or
+pretool_guard.cjs.
 
 Usage
 -----
-    python verify-hook.py
+    python verify-hook.py                 # Windows: tests pretool_guard.ps1
+    python3 verify-hook.py                # macOS / Linux: tests pretool_guard.cjs
+    python verify-hook.py --guard node    # force the Node guard (any OS)
+    python verify-hook.py --guard ps      # force the PowerShell guard
+
+The Node interpreter defaults to `node` on PATH; set NODE=/abs/path/to/node to
+override. SECTION 5 (macOS / Linux rules) only runs against the Node guard,
+because pretool_guard.ps1 does not carry those rules.
 
 Exit code 0 = all assertions passed, 1 = at least one failure.
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPT = os.path.join(HERE, "pretool_guard.ps1")
 CASES = os.path.join(HERE, "test-cases.txt")
 LOG = os.path.join(HERE, "hook_log.jsonl")
 STATE = os.path.join(HERE, "state")
 
-PS = os.path.join(
-    os.environ.get("SystemRoot", r"C:\Windows"),
-    "System32", "WindowsPowerShell", "v1.0", "powershell.exe",
-)
+
+def pick_guard():
+    if "--guard" in sys.argv:
+        idx = sys.argv.index("--guard")
+        if idx + 1 < len(sys.argv) and sys.argv[idx + 1] in ("ps", "node"):
+            return sys.argv[idx + 1]
+        sys.exit("usage: verify-hook.py [--guard ps|node]")
+    return "ps" if os.name == "nt" else "node"
+
+
+GUARD = pick_guard()
+
+if GUARD == "ps":
+    SCRIPT = os.path.join(HERE, "pretool_guard.ps1")
+    PS = os.path.join(
+        os.environ.get("SystemRoot", r"C:\Windows"),
+        "System32", "WindowsPowerShell", "v1.0", "powershell.exe",
+    )
+    GUARD_CMD = [PS, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", SCRIPT]
+else:
+    SCRIPT = os.path.join(HERE, "pretool_guard.cjs")
+    NODE = os.environ.get("NODE") or shutil.which("node") or "node"
+    GUARD_CMD = [NODE, SCRIPT]
 
 CN = "\u6d4b\u8bd5\u7528\u6237"  # <YOUR_CN_USERNAME> Chinese user-name characters for UTF-8 test
 
@@ -44,7 +71,7 @@ def call_guard(payload_obj):
     """Send a payload as UTF-8 bytes on stdin, return the parsed verdict."""
     raw = json.dumps(payload_obj, ensure_ascii=False).encode("utf-8")
     proc = subprocess.run(
-        [PS, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", SCRIPT],
+        GUARD_CMD,
         input=raw, capture_output=True, timeout=90,
     )
     text = proc.stdout.decode("utf-8", errors="replace").strip()
@@ -152,6 +179,59 @@ def main():
         check("repeat benign build #%d" % i, "npm run build", "allow", conversation="s4")
     for i in (1, 2, 3):
         check("repeat read-only ls #%d" % i, "ls -la", "allow", conversation="s4")
+
+    if GUARD == "node":
+        print()
+        print("=" * 78)
+        print("SECTION 5  macOS / Linux rules (Node guard only)")
+        print("=" * 78)
+        unix_deny_cases = [
+            ("rm -Rf (uppercase R)", "rm -Rf ~/Projects/tmp"),
+            ("sudo rm -rf", "sudo rm -rf /usr/local/foo"),
+            ("diskutil eraseDisk", "diskutil eraseDisk APFS Blank /dev/disk4"),
+            ("diskutil apfs deleteVolume", "diskutil apfs deleteVolume disk3s5"),
+            ("dd to raw device", "sudo dd if=/dev/zero of=/dev/rdisk4 bs=1m"),
+            ("newfs", "newfs_apfs /dev/disk4s1"),
+            ("tmutil delete", "sudo tmutil delete /Volumes/Backup/2026-01-01-000000"),
+            ("csrutil disable", "csrutil disable"),
+            ("killall ClashX", "killall ClashX"),
+            ("pkill mihomo", "pkill -9 mihomo"),
+            ("kill $(pgrep sing-box)", "kill -9 $(pgrep sing-box)"),
+            ("killall Surge", "killall 'Surge'"),
+            ("launchctl bootout clash", "launchctl bootout gui/501/com.metacubex.ClashX.ProxyConfigHelper"),
+            ("launchctl unload sing-box", "sudo launchctl unload /Library/LaunchDaemons/io.nekohasekai.sing-box.plist"),
+            ("systemctl stop mihomo", "sudo systemctl stop mihomo"),
+            ("osascript quit Stash", "osascript -e 'quit app \"Stash\"'"),
+            ("networksetup set web proxy", "networksetup -setwebproxy Wi-Fi 127.0.0.1 7890"),
+            ("networksetup proxy state off", "networksetup -setsecurewebproxystate Wi-Fi off"),
+            ("networksetup wifi power off", "networksetup -setairportpower en0 off"),
+            ("ifconfig down", "sudo ifconfig en0 down"),
+            ("ip link down", "sudo ip link set eth0 down"),
+            ("ipconfig set none", "sudo ipconfig set en0 NONE"),
+            ("route flush", "sudo route -n flush"),
+            ("route delete default", "sudo route delete default"),
+            ("pfctl disable", "sudo pfctl -d"),
+            ("pfctl flush all", "sudo pfctl -F all"),
+            ("nmcli networking off", "nmcli networking off"),
+        ]
+        for idx, (label, cmd) in enumerate(unix_deny_cases):
+            check(label, cmd, "deny", conversation="s5-deny-%d" % idx)
+
+        unix_allow_cases = [
+            ("read-only networksetup get", "networksetup -getwebproxy Wi-Fi"),
+            ("read-only networksetup list", "networksetup -listallnetworkservices"),
+            ("read-only scutil --proxy", "scutil --proxy"),
+            ("read-only pgrep proxy", "pgrep -fl 'clash|mihomo|sing-box'"),
+            ("read-only launchctl list", "launchctl list | grep -i clash"),
+            ("read-only ifconfig", "ifconfig en0"),
+            ("read-only route get", "route -n get default"),
+            ("read-only diskutil list", "diskutil list"),
+            ("rm single file", "rm build/output.log"),
+            ("rm -r without force", "rm -r build/tmp"),
+            ("brew install", "brew install jq"),
+        ]
+        for idx, (label, cmd) in enumerate(unix_allow_cases):
+            check(label, cmd, "allow", conversation="s5-allow-%d" % idx)
 
     print()
     print("=" * 78)

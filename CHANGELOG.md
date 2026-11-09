@@ -9,6 +9,11 @@
   - macOS 桌面端探测补充用户级 `~/Applications`；桌面端找不到时退回 PATH、当前 node 所在目录、`/opt/homebrew/bin`、`/usr/local/bin` 与 `~/.volta/bin` 中的 npm 版 `dsh`。
   - `dsh_status` 新增 `headless_cli` 检查（`--profile headless --patch <CRED_PATCH> --help`，不花 token，成功后按 `DSH_CMD` 在进程内存缓存），自检前先落盘补丁；`dsh_asar` 改为参考信息，不再计入 `ready`。
   - 解析 headless `--json` 流中的 `error` 事件（区分 `streamError` 与 `NO_FINAL_EVENT`），补齐 `runHeadless()` 的 `timeoutMs` 默认值；旧版 headless 不认识参数时给出升级提示。
+- Hook 层支持 macOS / Linux（Windows 默认行为不变，仍使用 `pretool_guard.ps1`）：
+  - 新增 `hooks/scripts/pretool_guard.cjs`：`pretool_guard.ps1` 的 Node 跨平台版，29 条规则逐条一致，另加 macOS / Linux 规则（`diskutil erase*`、`dd of=/dev/`、`mkfs`/`newfs_*`、`tmutil delete`、`csrutil disable`；`kill`/`pkill`/`killall`/`launchctl`/`systemctl`/`osascript quit` 结束代理客户端；`networksetup -set*`、`ifconfig down`、`ipconfig set`、`route delete/flush/change`、`pfctl -d/-F`、`nmcli` 断网）。
+  - 新增根目录 `install.sh` / `uninstall.sh`（逻辑在 `hooks/unix/hooks-installer.mjs`），等价于 `install.ps1 -HookOnly` 与 `uninstall.ps1` 的 hook-only 分支；`hooks.json` 中的命令改写为 Node 绝对路径，避免 GUI 启动的 Antigravity 找不到 `node`。
+  - `verify-hook.py` 新增 `--guard ps|node`（非 Windows 默认 `node`），Node 版额外跑 38 项 macOS / Linux 用例，合计 78 项。
+  - `install.ps1` / `uninstall.ps1` 的受管文件清单加入 `pretool_guard.cjs`，保证 Windows 卸载时一并清理。
 
 ## [1.1.0] - 2026-11-09
 

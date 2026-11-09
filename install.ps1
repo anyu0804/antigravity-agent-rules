@@ -119,6 +119,7 @@ $ManagedTargets = @(
     @{ Rel = 'config\hooks.json';                         Mode = 'MERGE (top-level keys)' },
     @{ Rel = 'config\config.json';                        Mode = 'MERGE (enable 5 plugins)' },
     @{ Rel = 'config\scripts\pretool_guard.ps1';          Mode = 'OVERWRITE' },
+    @{ Rel = 'config\scripts\pretool_guard.cjs';          Mode = 'OVERWRITE' },
     @{ Rel = 'config\scripts\read_loop_guard.cjs';        Mode = 'OVERWRITE' },
     @{ Rel = 'config\scripts\read_loop_settings.json';    Mode = 'OVERWRITE' },
     @{ Rel = 'config\scripts\test-cases.txt';             Mode = 'OVERWRITE' },

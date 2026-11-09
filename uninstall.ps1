@@ -82,6 +82,7 @@ $ManagedRelPaths = @(
     'GEMINI.md',
     'config\hooks.json',
     'config\scripts\pretool_guard.ps1',
+    'config\scripts\pretool_guard.cjs',
     'config\scripts\read_loop_guard.cjs',
     'config\scripts\read_loop_settings.json',
     'config\scripts\test-cases.txt',

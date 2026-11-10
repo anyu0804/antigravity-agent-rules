@@ -109,14 +109,20 @@ function Write-Utf8NoBom([string]$Path, [string]$Text, [bool]$Append) {
 function Redact-Command([string]$Text) {
     if ([string]::IsNullOrEmpty($Text)) { return '' }
     $s = $Text
-    # Redact URL user:password@
-    $s = [regex]::Replace($s, '(https?://[^/\s:@]+:)[^/\s@]+(@)', '$1<REDACTED>$2', 'IgnoreCase')
-    # Redact Authorization: Bearer / Basic / Token headers
-    $s = [regex]::Replace($s, '(Authorization\s*:\s*(?:Bearer|Basic|Token)\s+)[^\s"''`]+', '$1<REDACTED>', 'IgnoreCase')
-    # Redact well-known token prefixes (OpenAI/Anthropic sk-, GitHub ghp_/github_pat_, Google AIza, Slack xox*)
-    $s = [regex]::Replace($s, '\b(sk-[a-zA-Z0-9_-]{10,}|gh[pousr]_[a-zA-Z0-9]{16,}|github_pat_[a-zA-Z0-9_]{16,}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[a-zA-Z0-9-]{10,}|ak-[a-zA-Z0-9]{16,})\b', '<REDACTED_TOKEN>')
-    # Redact CLI flags carrying secrets (--token, --password, --api-key, --secret, etc.)
+    # Redact URI scheme://user:password@ (http, https, postgres, mysql, mongodb+srv, redis, amqp, etc.)
+    $s = [regex]::Replace($s, '([a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@]+:)[^/\s@]+(@)', '$1<REDACTED>$2', 'IgnoreCase')
+    # Redact Authorization / Proxy-Authorization and sensitive custom HTTP headers
+    $s = [regex]::Replace($s, '((?:Proxy-)?Authorization\s*:\s*(?:(?:Bearer|Basic|Token|Digest|ApiKey|AWS4-HMAC-SHA256)\s+)?)[^\s"''`]+', '$1<REDACTED>', 'IgnoreCase')
+    $s = [regex]::Replace($s, '(\b(?:Cookie|Set-Cookie|X-API-Key|X-Auth-Token|X-Access-Token|Api-Key|X-Secret-Key|Private-Token|Gitlab-Token|Cf-Access-Client-Secret)\s*:\s*)[^\r\n"''`]+', '$1<REDACTED>', 'IgnoreCase')
+    # Redact curl -u / --user / --proxy-user user:password credentials
+    $s = [regex]::Replace($s, '(-[uU]|--(?:proxy-)?user)(\s+|=)("[^":\r\n]+:[^"\r\n]*"|''[^'':\r\n]+:[^''\r\n]*''|[^:\s"'']+:[^\s"'']+)', '$1$2<REDACTED>', 'IgnoreCase')
+    # Redact well-known token prefixes (OpenAI/Anthropic sk-, GitHub, GitLab, HF, npm, Google AIza, AWS AKIA/ASIA, Slack xox*)
+    $s = [regex]::Replace($s, '\b(sk-[a-zA-Z0-9_-]{10,}|gh[pousr]_[a-zA-Z0-9]{16,}|github_pat_[a-zA-Z0-9_]{16,}|glpat-[a-zA-Z0-9_-]{20,}|hf_[a-zA-Z0-9]{20,}|npm_[a-zA-Z0-9]{20,}|AIza[0-9A-Za-z_-]{20,}|(?:AKIA|ASIA)[0-9A-Z]{16}|xox[baprs]-[a-zA-Z0-9-]{10,}|ak-[a-zA-Z0-9]{16,})\b', '<REDACTED_TOKEN>')
+    # Redact CLI flags carrying secrets (--token, --password, --api-key, -p password on mysql/sshpass/login, redis-cli -a)
     $s = [regex]::Replace($s, '(--?(?:token|password|passwd|secret|api-?key|access-?key|private-?key|auth-?token|client-?secret))(\s+|=)("[^"]*"|''[^'']*''|\S+)', '$1$2<REDACTED>', 'IgnoreCase')
+    $s = [regex]::Replace($s, '(\b(?:mysql\w*|mariadb\w*|7z[as]?)\b[^\r\n;&|]*?\s-p)(\S+)', '$1<REDACTED>', 'IgnoreCase')
+    $s = [regex]::Replace($s, '(\b(?:sshpass|login)\b[^\r\n;&|]*?\s-p\s+)("[^"]*"|''[^'']*''|\S+)', '$1<REDACTED>', 'IgnoreCase')
+    $s = [regex]::Replace($s, '(\bredis-cli\b[^\r\n;&|]*?\s-a\s+)("[^"]*"|''[^'']*''|\S+)', '$1<REDACTED>', 'IgnoreCase')
     # Redact ENV_VAR=secret assignments
     $s = [regex]::Replace($s, '\b([A-Za-z0-9_]*(?:TOKEN|PASSWORD|PASSWD|SECRET|API_KEY|PRIVATE_KEY|ACCESS_KEY|CREDENTIAL)[A-Za-z0-9_]*)=("[^"]*"|''[^'']*''|\S+)', '$1=<REDACTED>', 'IgnoreCase')
     if ($s.Length -gt 500) {

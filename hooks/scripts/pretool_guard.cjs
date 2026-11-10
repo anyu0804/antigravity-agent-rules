@@ -211,10 +211,15 @@ function maskDataQuotes(cmd) {
 function redactCmd(text) {
   if (!text) return '';
   let s = String(text);
-  s = s.replace(/(https?:\/\/[^/\s:@]+:)[^/\s@]+(@)/gi, '$1<REDACTED>$2');
-  s = s.replace(/(Authorization\s*:\s*(?:Bearer|Basic|Token)\s+)[^\s"'`]+/gi, '$1<REDACTED>');
-  s = s.replace(/\b(sk-[a-zA-Z0-9_-]{10,}|gh[pousr]_[a-zA-Z0-9]{16,}|github_pat_[a-zA-Z0-9_]{16,}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[a-zA-Z0-9-]{10,}|ak-[a-zA-Z0-9]{16,})\b/g, '<REDACTED_TOKEN>');
+  s = s.replace(/([a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^/\s:@]+:)[^/\s@]+(@)/gi, '$1<REDACTED>$2');
+  s = s.replace(/((?:Proxy-)?Authorization\s*:\s*(?:(?:Bearer|Basic|Token|Digest|ApiKey|AWS4-HMAC-SHA256)\s+)?)[^\s"'`]+/gi, '$1<REDACTED>');
+  s = s.replace(/(\b(?:Cookie|Set-Cookie|X-API-Key|X-Auth-Token|X-Access-Token|Api-Key|X-Secret-Key|Private-Token|Gitlab-Token|Cf-Access-Client-Secret)\s*:\s*)[^\r\n"'`]+/gi, '$1<REDACTED>');
+  s = s.replace(/(-[uU]|--(?:proxy-)?user)(\s+|=)("[^":\r\n]+:[^"\r\n]*"|'[^':\r\n]+:[^'\r\n]*'|[^:\s"']+:[^\s"']+)/gi, '$1$2<REDACTED>');
+  s = s.replace(/\b(sk-[a-zA-Z0-9_-]{10,}|gh[pousr]_[a-zA-Z0-9]{16,}|github_pat_[a-zA-Z0-9_]{16,}|glpat-[a-zA-Z0-9_-]{20,}|hf_[a-zA-Z0-9]{20,}|npm_[a-zA-Z0-9]{20,}|AIza[0-9A-Za-z_-]{20,}|(?:AKIA|ASIA)[0-9A-Z]{16}|xox[baprs]-[a-zA-Z0-9-]{10,}|ak-[a-zA-Z0-9]{16,})\b/g, '<REDACTED_TOKEN>');
   s = s.replace(/(--?(?:token|password|passwd|secret|api-?key|access-?key|private-?key|auth-?token|client-?secret))(\s+|=)("[^"]*"|'[^']*'|\S+)/gi, '$1$2<REDACTED>');
+  s = s.replace(/(\b(?:mysql\w*|mariadb\w*|7z[as]?)\b[^\r\n;&|]*?\s-p)(\S+)/gi, '$1<REDACTED>');
+  s = s.replace(/(\b(?:sshpass|login)\b[^\r\n;&|]*?\s-p\s+)("[^"]*"|'[^']*'|\S+)/gi, '$1<REDACTED>');
+  s = s.replace(/(\bredis-cli\b[^\r\n;&|]*?\s-a\s+)("[^"]*"|'[^']*'|\S+)/gi, '$1<REDACTED>');
   s = s.replace(/\b([A-Za-z0-9_]*(?:TOKEN|PASSWORD|PASSWD|SECRET|API_KEY|PRIVATE_KEY|ACCESS_KEY|CREDENTIAL)[A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S+)/gi, '$1=<REDACTED>');
   if (s.length > 500) s = s.slice(0, 500) + '...(truncated)';
   return s;

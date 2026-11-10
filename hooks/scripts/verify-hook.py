@@ -637,6 +637,9 @@ def main():
           conversation="s7-h", settings={"defaultDecision": "auto_approve", "confirmDecision": "allow"})
     check("confirm tier can never become allow", "rm -r build", "deny",
           conversation="s7-i", settings={"defaultDecision": "auto_approve", "confirmDecision": "allow"})
+    check("redaction: URI, -u, header, -p, AKIA",
+          'curl -u admin:uPass99 -H "X-API-Key: hdrSecret99" postgres://dbuser:pgPass99@localhost/db && mysql -uroot -pmyPass99 && AWS_ID=AKIAIOSFODNN7EXAMPLE rm -r build',
+          "deny", conversation="s7-redact")
 
     print()
     print("=" * 78)
@@ -666,9 +669,10 @@ def main():
                 if "ERROR-FAILOPEN" in ln:
                     print("   ", ln[:300])
             sys.exit(1)
-        if "sk-secret1234567890" in data:
-            print("FATAL: plaintext secret leaked into hook_log.jsonl!")
-            sys.exit(1)
+        for leaked in ("sk-secret1234567890", "uPass99", "hdrSecret99", "pgPass99", "myPass99", "AKIAIOSFODNN7EXAMPLE"):
+            if leaked in data:
+                print("FATAL: plaintext secret (%s) leaked into hook_log.jsonl!" % leaked)
+                sys.exit(1)
         if '"verdict":"ASK"' in data or '"verdict":"ALLOW"' in data:
             print("FATAL: non-blocked commands should not be logged by default!")
             sys.exit(1)

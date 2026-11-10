@@ -12,7 +12,7 @@
 > 使用前请注意以下四点边界：
 > 1. **支持 Windows、macOS 与 Linux 全平台一键部署**：Windows 使用 [`install.ps1`](./install.ps1)（兼容 PowerShell 5.1 / `pwsh` 7，挂载 `pretool_guard.ps1`），macOS / Linux 使用 [`./install.sh`](./install.sh)（基于 Node.js >= 18，挂载跨平台 `pretool_guard.cjs`）。两端均默认执行 **5 层全量安装**，也都支持 `-HookOnly` / `--hook-only` 仅装 Hook 层。
 > 2. **正则黑名单是安全网，不是沙箱，可以被绕过**。它已覆盖 `git -C` 全局参数穿透、`rm -r`、`find -delete`、`git checkout -- .`、`git restore .`、`git push origin +main`、`bash -c`/`python -c`/`node -e` 单行删除及上下文数据引号掩码（避免 `grep "rm -rf"` 或 `git commit -m "...rm -rf..."` 误拦），但本质仍是正则匹配，不能替代容器或 OS 级权限隔离。
-> 3. **Hook 默认返回 `ask`（保留确认环节）+ 日志脱敏**：`pretool_guard.ps1` / `pretool_guard.cjs` 对未命中高危黑名单的命令**默认返回 `{"decision":"ask"}`**（交还宿主原有审批策略，绝不在 Ask-First 模式下替用户静默点同意；若在全自动环境确需由 Hook 直接返回 `allow`，可显式设环境变量 `AGY_HOOK_DEFAULT_DECISION=allow`）。审计日志 `hook_log.jsonl` **默认只记录被拦截（`DENY-DANGER`）与解析故障（`ERROR-FAILOPEN`）事件**，不记录日常放行命令，且落盘前自动将命令行中的 Token、密码与 API Key 脱敏为 `<REDACTED>`。
+> 3. **Hook 默认返回 `ask` + 两档拦截 + 日志脱敏**：`pretool_guard.ps1` / `pretool_guard.cjs` 对未命中高危黑名单的命令**默认返回 `{"decision":"ask"}`**。按 Antigravity 当前的 [Hooks 文档](https://antigravity.google/docs/hooks)，`ask` 是向用户请求确认（“始终允许”名单内的命令除外），`allow` 才是不干预、交给下一个 Hook 或宿主默认审批策略，直接批准的是 `auto_approve`；较早版本的文档对 `allow` 的描述不同，**实际行为以你安装的客户端版本为准**。改默认值前请在真机上把 `ask` 和 `allow` 各试一次，再写进脚本同目录的 `pretool_guard_settings.json`（见下文「拦什么、放什么」；环境变量 `AGY_HOOK_DEFAULT_DECISION` 仍然优先，但从 Dock / 开始菜单启动的客户端通常读不到 shell 里设的环境变量）。命中黑名单的命令分 block / confirm 两档，**默认两档都返回 `deny`**。审计日志 `hook_log.jsonl` **默认只记录被标记（`DENY-DANGER` / `CONFIRM-DANGER`）与解析故障（`ERROR-FAILOPEN`）事件**，不记录日常放行命令，且落盘前自动将命令行中的 Token、密码与 API Key 脱敏为 `<REDACTED>`。
 > 4. 不要把本仓库所有 `.md` 文件拼接塞进同一个系统提示词（System Prompt / `GEMINI.md`）全量常驻。大模型有效注意力有限，全设为 `always_on` 不但白占数万 Token 推理空间，日常聊句简单问答也会触发繁琐的工程仪式并冲淡安全红线。正确用法是只让 `global/` 下约 100 行核心规则常驻，高危命令交给 `hooks/` 在进程级拦截（0 Token 开销），其余 `rules/`、`tone/` 和 `skills/` 由模型按场景触发读取。
 
 ---
@@ -24,7 +24,7 @@
 ### Windows（PowerShell 5.1 / `pwsh` 7）
 
 ```powershell
-# 一键全量安装 5 层配置并自动跑完 52 项 Hook 离线回归自检（自动化环境跳过确认可加 -Force）
+# 一键全量安装 5 层配置并自动跑完 193 项 Hook 离线回归自检（自动化环境跳过确认可加 -Force）
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 
 # 只装 Hook（防强删 + 代理/网络保护），不动 GEMINI.md、config.json 和规则/Skill/文风层
@@ -37,7 +37,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 ### macOS / Linux（Node.js >= 18）
 
 ```bash
-# 一键全量安装 5 层配置并自动跑完 90 项 Hook 离线回归自检（跳过确认可加 --force，指定工作区可加 --workspace-path DIR）
+# 一键全量安装 5 层配置并自动跑完 241 项 Hook 离线回归自检（跳过确认可加 --force，指定工作区可加 --workspace-path DIR）
 ./install.sh
 
 # 只装 Hook 层（等价于 Windows 的 install.ps1 -HookOnly）
@@ -52,7 +52,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 2. 确认：列出 `~/.gemini` 下即将被合并或覆盖的文件/目录，等你输入 `y` 确认后才继续（默认否，加 `-Force` / `--force` 可跳过）。
 3. 备份：把安装前已存在的文件与目录完整备份到 `~/.gemini/backup_antigravity_rules_<timestamp>/`，同时记录 `manifest.json`（含 `mode: full | hook-only`）。
 4. 无损合并与分发：合并 `GEMINI.md` 与 `hooks.json`，将 `file:///<YOUR_PATH>/.gemini/` 链接占位符替换为当前用户家目录正斜杠路径，分发 5 层文件（5 个插件 + 2 个独立 Skills）并在 `config.json` 中启用 5 个插件。
-5. 脚本回归自检：自动运行 `verify-hook.py` 验证全部断言通过（Windows PowerShell 守卫 52 项，macOS / Linux Node 守卫 90 项，含密钥脱敏与零 `ERROR-FAILOPEN` 校验）。
+5. 脚本回归自检：自动运行 `verify-hook.py` 验证全部断言通过（Windows PowerShell 守卫 193 项，macOS / Linux Node 守卫 241 项，含密钥脱敏与零 `ERROR-FAILOPEN` 校验）。
 
 只想要拦截功能、不想换掉自己的规则，就用 `-HookOnly`（Windows）或 `--hook-only`（macOS / Linux）：只合并 `hooks.json` 并部署 `scripts/`，第 4 步里的 `GEMINI.md`、插件和 `config.json` 全部跳过，自检照常运行。卸载脚本会从备份的 `manifest.json` 自动识别 `full` 或 `hook-only` 模式，按对应范围还原。
 
@@ -84,14 +84,37 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 
 [`hooks/scripts/pretool_guard.ps1`](./hooks/scripts/pretool_guard.ps1)（Windows）与 [`hooks/scripts/pretool_guard.cjs`](./hooks/scripts/pretool_guard.cjs)（macOS / Linux）挂载在 `PreToolUse` 上，每次 `run_command` 执行前同步触发：
 
-- **上下文数据引号掩码（防误拦）**：在执行正则匹配前，先对搜索/输出命令（`grep`/`egrep`/`fgrep`/`rg`/`ag`/`ack`/`Select-String`/`echo`/`printf`/`Write-Host`）及 Git 提交说明（`git commit`/`tag`/`notes`/`merge` 的 `-m "..."`）中不含 `$(` 或反引号命令替换的单双引号字面量做掩码剥离，因此 `grep -rn "rm -rf" scripts/`、`git commit -m "fix rm -rf check"` 不会被误判拦截；而 `grep "rm -rf" a.txt && rm -rf build` 或 `bash -c "rm -rf /tmp/x"` 中的真实删除仍会被精准拦下。
+- **上下文数据引号掩码（防误拦）**：在执行正则匹配前，先对搜索/输出命令（`grep`/`egrep`/`fgrep`/`rg`/`ag`/`ack`/`sed`/`Select-String`/`echo`/`printf`/`Write-Host`）及 Git 提交说明（`git commit`/`tag`/`notes`/`merge` 的 `-m "..."`）中不含 `$(` 或反引号命令替换的单双引号字面量做掩码剥离，因此 `grep -rn "rm -rf" scripts/`、`git commit -m "fix rm -rf check"` 不会被误判拦截；而 `grep "rm -rf" a.txt && rm -rf build` 或 `bash -c "rm -rf /tmp/x"` 中的真实删除仍会被精准拦下。打印出的文本一旦会被当成代码执行，就不做掩码：`echo 'rm -rf src' | sh`、`printf ... | bash`，以及命令行里出现 `$(...)`、反引号或 `eval` 时的 `echo` / `printf`。
 - **高危删改与历史破坏拦截（防漏拦）**：
-  - 递归目录删除：`Remove-Item -Recurse`（含无 `-Force` 形式及 `ri`/`rm`/`del`/`rd`/`rmdir` 短参数）、`rm -r` / `rm -R` / `rm -rf` / `rm --recursive`（含不带 `-f` 的 `rm -r build`）、`find ... -delete` / `-exec rm`、`rd /s`、`rmdir /s`、`del /f`/`/s`、以及 `python -c "shutil.rmtree(...)"` / `node -e "fs.rmSync(...)"` 单行解释器删除。
-  - Git 历史与工作区破坏（支持 `git -C <dir>`、`-c k=v`、`--git-dir`、`--work-tree` 等全局选项穿透）：拦截 `git reset --hard`、`git clean -fd`/`-f`、`git checkout -- .` / `git checkout -f`、`git restore .` / `git restore --worktree`（放行仅取消暂存的 `git restore --staged .`）、以及 `git push --force` / `-f` / `git push origin +main`（同时**放行安全的 `git push --force-with-lease` 与 `--force-if-includes`**）。
+  - 递归目录删除：`Remove-Item -Recurse`（含无 `-Force` 形式及 `ri`/`rm`/`del`/`rd`/`rmdir` 短参数）、`rm -r` / `rm -R` / `rm -rf` / `rm --recursive`（含不带 `-f` 的 `rm -r build`）、`find ... -delete` / `-exec rm`、`rd /s`、`rmdir /s`、`del /f`/`/s`、以及 `python -c "shutil.rmtree(...)"` / `node -e "fs.rmSync(..., {recursive:true})"` 单行解释器递归删除（解释器里删单个文件与 `rm <file>` 一样不标记）。带路径的可执行文件按同一条命令处理（`/bin/rm -rf`、`\rm -rf`、`/usr/bin/git reset --hard`、`"C:\...\git.exe" reset --hard`）；`git rm`、`pnpm rm`、`docker rm` 这类子命令不当作文件删除。
+  - Git 历史与工作区破坏（支持 `git -C <dir>`、`-c k=v`、`--git-dir`、`--work-tree` 等全局选项穿透）：拦截 `git reset --hard`、`git clean -fd`/`-f`、`git checkout -- .` / `git checkout -f`、`git restore .` / `git restore --worktree`（放行仅取消暂存的 `git restore --staged .`）、以及 `git push --force` / `-f` / `git push origin +main`（同时**放行安全的 `git push --force-with-lease` 与 `--force-if-includes`**）。同样标记不带 `--` 的 `git checkout .`、整目录的 `git checkout -- src/` / `git restore src/`、`git restore -s <rev> .`、`git stash drop` / `clear`、`git switch --discard-changes`、`git rm -f`；放行 `git clean -n` / `--dry-run` 预演与 `git rm --cached`。
   - 磁盘与注册表破坏：`Format-Volume`、`format C:`、`Clear-Disk`、`Initialize-Disk`、`Remove-Item HKLM:`、`reg delete`。
 - **代理与网络配置只读保护**：拦截结束本地代理进程（`taskkill`/`Stop-Process`/`pkill`/`killall` 等针对 Clash、mihomo、sing-box、v2ray、xray、Surge、Stash 等）、停止虚拟网卡或代理服务（`sc stop`/`Stop-Service`/`launchctl`/`systemctl`）、断网删路由（`netsh wlan disconnect`、`Disable-NetAdapter`、`ipconfig /release`、`route delete`、`ifconfig down`、`nmcli`、`pfctl`）及篡改系统代理设置（`Internet Settings` 注册表、`netsh winhttp set proxy`、`networksetup -set*`）。
 
-命中黑名单时直接返回 `{"decision":"deny","reason":"HARD GATE: blocked - ..."}`；**未命中黑名单的命令默认返回 `{"decision":"ask"}`**（如需由 Hook 自动放行可设 `AGY_HOOK_DEFAULT_DECISION=allow`）。审计日志 `hook_log.jsonl` 默认仅记录 `DENY-DANGER` 与 `ERROR-FAILOPEN`（不记录日常放行命令，除非设 `AGY_HOOK_LOG_ALL=1`），并在写入前对命令行中的 Bearer Token、`sk-*`/`ghp_*`/`AIza*`、`--token`/`--password`/`API_KEY=` 等敏感凭据做正则脱敏。
+命中黑名单的命令分两档：
+
+- **block 档**：不可逆、且不可能发生在工作区内的操作——格式化或重建磁盘、删除文件系统根目录 / 盘符根 / 家目录 / 系统目录（`rm -rf /`、`rm -rf ~`、`Remove-Item C:\ -Recurse`、`rd /s /q C:\Users`）、从 `/` 或 `~` 起 `find ... -delete`。恒定返回 `{"decision":"deny","reason":"HARD GATE: blocked - ..."}`，任何设置都改不了。
+- **confirm 档**：其余全部规则——工作区内的递归删除、Git 破坏性操作、注册表删除、代理与网络操作。返回 `confirmDecision`，**默认是 `deny`，与之前的行为一致**；设为 `force_ask` 后改为每次弹出确认（返回 `{"decision":"force_ask","reason":"CONFIRM: ..."}`），`rm -r dist`、`git reset --hard` 这类有时确实想执行的命令由用户当场决定。
+
+**未命中黑名单的命令默认返回 `{"decision":"ask"}`**。两个默认值都可以在可选的 `pretool_guard_settings.json` 里改。该文件与守卫脚本同目录（`~/.gemini/config/scripts/`），仓库不自带，重新安装不会覆盖，卸载也不会删除：
+
+```json
+{
+  "defaultDecision": "ask",
+  "confirmDecision": "force_ask",
+  "logAll": false
+}
+```
+
+| 键 | 可选值 | 默认 | 含义 |
+| :--- | :--- | :--- | :--- |
+| `defaultDecision` | `ask` / `allow` | `ask` | 未命中黑名单的命令返回什么 |
+| `confirmDecision` | `deny` / `force_ask` / `ask` | `deny` | confirm 档返回什么；无法设成 `allow` |
+| `logAll` | `true` / `false` | `false` | 是否把未命中的命令也写进日志 |
+
+环境变量 `AGY_HOOK_DEFAULT_DECISION` / `AGY_HOOK_CONFIRM_DECISION` / `AGY_HOOK_LOG_ALL` 优先于文件，`AGY_HOOK_SETTINGS` 可指向另一份设置文件。文件缺失、JSON 损坏或取值无效时，一律回落到最严格的默认值（`ask` / `deny`）。`force_ask` 在 `/swarm` 后台 Worker 等无人应答场景下的宿主行为尚未在真机验证（`NOT_PROVEN`），所以没有把它设为默认。
+
+审计日志 `hook_log.jsonl` 默认仅记录 `DENY-DANGER`、`CONFIRM-DANGER` 与 `ERROR-FAILOPEN`（不记录日常放行命令，除非开启 `logAll`），并在写入前对命令行中的 Bearer Token、`sk-*`/`ghp_*`/`AIza*`、`--token`/`--password`/`API_KEY=` 等敏感凭据做正则脱敏。
 
 另外还有 [`hooks/scripts/read_loop_guard.cjs`](./hooks/scripts/read_loop_guard.cjs)（配合 [`read_loop_settings.json`](./hooks/scripts/read_loop_settings.json)），用来监测同一会话对未变更文件相同行号区间的重复读取（`repeatLimit: 3`），当前默认只跑在 `PostToolUse` 的 `observe` 模式，`enforce` 阻断模式标 `NOT_PROVEN`。
 
@@ -107,11 +130,11 @@ Antigravity 往 Hook 的 `stdin` 发送的是原始 UTF-8 字节流，但中文 
 
 ### 3. 离线脚本回归自检（`verify-hook.py`）与宿主真机挂载验证
 
-每次修改 `pretool_guard.ps1` 或 `pretool_guard.cjs` 后，运行 [`hooks/scripts/verify-hook.py`](./hooks/scripts/verify-hook.py) 可执行全量离线回归校验（Windows PowerShell 守卫 **52 项**，macOS / Linux Node 守卫 **90 项**）：
+每次修改 `pretool_guard.ps1` 或 `pretool_guard.cjs` 后，运行 [`hooks/scripts/verify-hook.py`](./hooks/scripts/verify-hook.py) 可执行全量离线回归校验（Windows PowerShell 守卫 **193 项**，macOS / Linux Node 守卫 **241 项**）：
 
 ```bash
-python ~/.gemini/config/scripts/verify-hook.py                # Windows 默认测 PS 版 (52 项)
-python ~/.gemini/config/scripts/verify-hook.py --guard node   # 测跨平台 Node 版 (90 项)
+python ~/.gemini/config/scripts/verify-hook.py                # Windows 默认测 PS 版 (193 项)
+python ~/.gemini/config/scripts/verify-hook.py --guard node   # 测跨平台 Node 版 (241 项)
 ```
 
 跑完除了要求 `FAIL 0`、检查 `hook_log.jsonl` 中 `ERROR-FAILOPEN` 为 `0` 外，还会自动断言日常非拦截命令未被写入日志、且命令行中的测试密钥 `sk-secret...` 已被脱敏为 `<REDACTED>`。
@@ -145,15 +168,15 @@ flowchart TD
 
 | 仓库内路径 | 原始部署路径（脱敏） | 所属层级 | 触发方式 | 一句话作用 |
 | :--- | :--- | :--- | :--- | :--- |
-| [`install.ps1`](./install.ps1) | 仓库根目录执行（Windows 一键部署入口） | 自动化部署 (`root`) | 手动执行（首次安装或更新规则时） | 预先校验 `config.json`/`hooks.json` 语法、列出待修改项并经 `y` 确认（支持 `-Force` / `-HookOnly`）、自动备份原配置、替换 `<YOUR_PATH>`、按标记/顶层键无损合并 `GEMINI.md` 与 `hooks.json`、分发 5 层文件、启用 5 个插件并跑通 `verify-hook.py` 52 项自检。 |
+| [`install.ps1`](./install.ps1) | 仓库根目录执行（Windows 一键部署入口） | 自动化部署 (`root`) | 手动执行（首次安装或更新规则时） | 预先校验 `config.json`/`hooks.json` 语法、列出待修改项并经 `y` 确认（支持 `-Force` / `-HookOnly`）、自动备份原配置、替换 `<YOUR_PATH>`、按标记/顶层键无损合并 `GEMINI.md` 与 `hooks.json`、分发 5 层文件、启用 5 个插件并跑通 `verify-hook.py` 193 项自检。 |
 | [`uninstall.ps1`](./uninstall.ps1) | 仓库根目录执行（Windows 一键卸载回滚） | 自动化部署 (`root`) | 手动执行（卸载或还原配置时） | 经 `y` 确认后（支持 `-Force`），从最近一次 `backup_antigravity_rules_*` 还原安装前已存在的文件，删除安装前不存在的文件与插件目录，并仅从 `config.json` 移除本仓库的 5 个插件条目。 |
-| [`install.sh`](./install.sh) / [`uninstall.sh`](./uninstall.sh) + [`hooks/unix/hooks-installer.mjs`](./hooks/unix/hooks-installer.mjs) | 仓库根目录执行（macOS / Linux 一键部署与卸载入口） | 自动化部署 (`root`) | 手动执行（macOS / Linux 全量安装、仅装 Hook 或卸载还原时） | 等价于 `install.ps1` / `uninstall.ps1` 的跨平台版（默认 5 层全量安装，支持 `--hook-only`、`--force`、`--workspace-path`）：预校验 `config.json`/`hooks.json`、备份、无损合并 `GEMINI.md` 与 `hooks.json`（改写 Node 绝对路径）、替换 `<YOUR_PATH>` 与 `%USERPROFILE%\`、分发 5 个插件与独立 Skills、启用 `config.json` 插件并跑通 `verify-hook.py --guard node` 90 项自检。 |
+| [`install.sh`](./install.sh) / [`uninstall.sh`](./uninstall.sh) + [`hooks/unix/hooks-installer.mjs`](./hooks/unix/hooks-installer.mjs) | 仓库根目录执行（macOS / Linux 一键部署与卸载入口） | 自动化部署 (`root`) | 手动执行（macOS / Linux 全量安装、仅装 Hook 或卸载还原时） | 等价于 `install.ps1` / `uninstall.ps1` 的跨平台版（默认 5 层全量安装，支持 `--hook-only`、`--force`、`--workspace-path`）：预校验 `config.json`/`hooks.json`、备份、无损合并 `GEMINI.md` 与 `hooks.json`（改写 Node 绝对路径）、替换 `<YOUR_PATH>` 与 `%USERPROFILE%\`、分发 5 个插件与独立 Skills、启用 `config.json` 插件并跑通 `verify-hook.py --guard node` 241 项自检。 |
 | [`hooks/hooks.json`](./hooks/hooks.json) | `~/.gemini/config/hooks.json` | 硬拦截 Hook (`hooks/`) | `PreToolUse` (`run_command`) / `PostToolUse` (读写检索工具) | 注册 `hard-gate` 危险命令硬拦截与 `read-loop` 重复读取检测钩子。 |
 | [`hooks/scripts/pretool_guard.ps1`](./hooks/scripts/pretool_guard.ps1) | `~/.gemini/config/scripts/pretool_guard.ps1` | 硬拦截 Hook (`hooks/`) | `PreToolUse`（Windows 下每次 `run_command` 执行前同步触发） | 底层正则硬拦截递归删除（`rm -r`、`Remove-Item -Recurse`、`find -delete`、解释器单行删除）、`git -C` 全局选项下的 `reset --hard`/`push --force`/`+refspec`/`clean -fd`/`checkout -- .`/`restore .`、删注册表/格式化及杀代理断网命令；支持数据引号掩码防误拦，默认返回 `ask`，仅记录拦截日志并自动脱敏密钥。 |
 | [`hooks/scripts/pretool_guard.cjs`](./hooks/scripts/pretool_guard.cjs) | `~/.gemini/config/scripts/pretool_guard.cjs` | 硬拦截 Hook (`hooks/`) | `PreToolUse`（macOS / Linux 安装时挂载） | `pretool_guard.ps1` 的 Node 跨平台版：通用规则与 PS 版逐条同步，另加 17 条 macOS / Linux 的磁盘、代理客户端与网络设置规则；同样默认返回 `ask` 并对拦截日志做密钥脱敏。 |
 | [`hooks/scripts/read_loop_guard.cjs`](./hooks/scripts/read_loop_guard.cjs) | `~/.gemini/config/scripts/read_loop_guard.cjs` | 硬拦截 Hook (`hooks/`) | `PostToolUse`（默认 `observe`）/ `PreToolUse`（`enforce` 未启用） | 监测同一会话内对未变更文件相同行号区间的重复读取（兼容 `read_file`/`edit_file`/`write_file` 与旧版 `view_file` 等，含省略 `EndLine` 整文件读取及 5MB 日志自动轮转）。默认仅运行在 `observe` 模式；`enforce` 模式标 `NOT_PROVEN`。 |
 | [`hooks/scripts/read_loop_settings.json`](./hooks/scripts/read_loop_settings.json) | `~/.gemini/config/scripts/read_loop_settings.json` | 硬拦截 Hook (`hooks/`) | 被 `read_loop_guard.cjs` 读取 | 配置重复读取检测模式（默认 `"mode": "observe"`，三个 Verified 标志均为 `false`，`enforce` 模式 `NOT_PROVEN`）与重复次数上限（`repeatLimit: 3`）。 |
-| [`hooks/scripts/verify-hook.py`](./hooks/scripts/verify-hook.py) + [`test-cases.txt`](./hooks/scripts/test-cases.txt) | `~/.gemini/config/scripts/` | 硬拦截 Hook (`hooks/`) | 手动或安装时自动执行 | 用含中文路径的真实 UTF-8 载荷对 `pretool_guard.ps1`（52 项）与 `pretool_guard.cjs`（90 项）做全量离线回归校验，验证防漏拦、防误拦、密钥脱敏且 `ERROR-FAILOPEN` 为 `0`。 |
+| [`hooks/scripts/verify-hook.py`](./hooks/scripts/verify-hook.py) + [`test-cases.txt`](./hooks/scripts/test-cases.txt) | `~/.gemini/config/scripts/` | 硬拦截 Hook (`hooks/`) | 手动或安装时自动执行 | 用含中文路径的真实 UTF-8 载荷对 `pretool_guard.ps1`（193 项）与 `pretool_guard.cjs`（241 项）做全量离线回归校验，验证防漏拦、防误拦、密钥脱敏且 `ERROR-FAILOPEN` 为 `0`。 |
 | [`global/GEMINI.md`](./global/GEMINI.md) | `~/.gemini/GEMINI.md` | Always-on 全局规则 (`global/`) | `always_on`（所有会话自动注入） | 定义人机协作态度、防开盒与路径脱敏铁律（默认不填入系统用户名/Git 账号名）、跨平台用户代理与网络配置严格只读红线、按平台分流的 Shell 偏好（Windows: Git Bash/`pwsh` 7；macOS/Linux: 原生 `zsh`/`bash`）、子代理派工原则与可选共享待办入口。 |
 | [`global/AGENTS.md`](./global/AGENTS.md)（含 [`plugin.json`](./global/plugin.json)） | `~/.gemini/config/plugins/anyi-global-rules/rules/AGENTS.md` | Always-on 全局规则 (`global/`) | `trigger: always_on` | 全局工程主规则（§1–§15）：规定动作分级（主工作树修改 ≥5 个文件先问再动，`branch`/`share` 隔离 worktree 未合入主分支前豁免并留 Verifier 终审）、`FAST_PATH`/`INVESTIGATION_PATH` 轮次纪律、禁仪式化严谨、停止与资源边界、交付契约、证据真实性、数据保护、范围锁定及按需专项路由。 |
 | [`global/THINKING-VISIBILITY.md`](./global/THINKING-VISIBILITY.md) | `~/.gemini/config/plugins/anyi-global-rules/rules/THINKING-VISIBILITY.md` | Always-on 全局规则 (`global/`) | `trigger: always_on` | 按运行模式区分思考可见性：主会话交互保留每次工具调用前 1–2 句前置判断；对 `/swarm` 并行执行 worker、`flash-verifier`、`research` 等后台子代理免除逐次工具前置播报，降低高单价输出开销与看板噪音。 |
@@ -190,7 +213,7 @@ flowchart TD
   - 将 `hooks/hooks.json` 放入 `~/.gemini/config/hooks.json`
   - 将 `hooks/scripts/*` 放入 `~/.gemini/config/scripts/`
 - 启用与验证：
-  - 在终端运行离线回归自检脚本验证守卫脚本逻辑（Windows 52 项 / Node 90 项断言）：
+  - 在终端运行离线回归自检脚本验证守卫脚本逻辑（Windows 193 项 / Node 241 项断言）：
     ```bash
     python ~/.gemini/config/scripts/verify-hook.py
     ```
@@ -269,7 +292,8 @@ flowchart TD
 1. 宿主操作系统与平台差异：
    - Windows、macOS、Linux 三端均支持全量 5 层部署与卸载（Windows 使用 `install.ps1` + `pretool_guard.ps1`，macOS / Linux 使用 `./install.sh` + `pretool_guard.cjs`）。`rules/WINDOWS-RELEASE.md` 属于按需触发（`trigger: model_decision`）的 Windows 交付物专项规则，在 macOS / Linux 常规开发中不会加载。
 2. Hook 默认决策与离线自检边界：
-   - `pretool_guard.ps1` / `pretool_guard.cjs` 对未命中黑名单命令默认返回 `{"decision":"ask"}`（如需自动放行可设环境变量 `AGY_HOOK_DEFAULT_DECISION=allow`）。`verify-hook.py` 仅对脚本本体做标准输入回归测试，安装后请按上文说明在客户端内触发一次受控拦截以确认宿主挂载生效。
+   - `pretool_guard.ps1` / `pretool_guard.cjs` 对未命中黑名单命令默认返回 `{"decision":"ask"}`，可在 `pretool_guard_settings.json` 中改为 `allow`。`ask` 与 `allow` 在宿主侧的含义随客户端版本而变，本仓库未在各版本上逐一验证（`NOT_PROVEN`）。`verify-hook.py` 仅对脚本本体做标准输入回归测试，安装后请按上文说明在客户端内触发一次受控拦截以确认宿主挂载生效。
+   - 黑名单仍是正则。`verify-hook.py` 的 `TIER_CORPUS` 末尾列出了当前**不会**被标记的破坏性命令（`git branch -D`、经变量间接调用的 `rm`、`[IO.Directory]::Delete`、`rsync --delete`、`truncate`、`mv` 到别处、`docker system prune`、以及任何脚本文件内部的删除）。
 3. `read_loop_guard.cjs` 的 `enforce` 拦截模式尚未验证（`NOT_PROVEN`）：
    - `read_loop_guard.cjs` 当前默认保持 `"mode": "observe"`（仅在 `PostToolUse` 记录重复读取诊断，不阻断工具调用）；`read_loop_settings.json` 中的三个 Verified 标志均为 `false`，且 `hooks.json` 中 `read-loop-enforcement` 默认为 `"enabled": false`。
 4. 软规则不能替代硬权限：

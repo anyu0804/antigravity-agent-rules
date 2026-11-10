@@ -15,6 +15,14 @@ to verify regex rules, quote-masking, secret redaction, and UTF-8 decoding. It
 does NOT prove that the Antigravity host process has loaded hooks.json; see
 README.md for the live host verification step.
 
+Sections 1-5 run with the default settings, where every flagged command is
+denied. Section 6 replays TIER_CORPUS with confirmDecision=force_ask, the one
+mode in which the three outcomes (block / confirm / pass) are all visible.
+The corpus is a regression fixture: a rule change that moves any command to a
+different outcome fails here and has to be reviewed and recorded on purpose.
+Section 8 is static: it compares the regex tables of the two guard scripts, so
+it also covers the guard that cannot run on the current OS.
+
 Usage
 -----
     python verify-hook.py                 # Windows: tests pretool_guard.ps1
@@ -26,9 +34,11 @@ Exit code 0 = all assertions passed, 1 = at least one failure.
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CASES = os.path.join(HERE, "test-cases.txt")
@@ -36,6 +46,9 @@ LOG = os.path.join(HERE, "hook_log.jsonl")
 STATE = os.path.join(HERE, "state")
 
 PASS_DECISION = "ask"
+TMP = tempfile.mkdtemp(prefix="agy-hook-selftest-")
+NO_SETTINGS = os.path.join(TMP, "absent.json")
+ENV_KEYS = ("AGY_HOOK_DEFAULT_DECISION", "AGY_HOOK_CONFIRM_DECISION", "AGY_HOOK_LOG_ALL")
 
 
 def pick_guard():
@@ -64,12 +77,29 @@ else:
 CN = "\u6d4b\u8bd5\u7528\u6237"  # Chinese user-name characters for UTF-8 test
 
 
-def call_guard(payload_obj):
-    """Send a payload as UTF-8 bytes on stdin, return the parsed verdict."""
+def settings_file(settings):
+    """None -> a path that does not exist; dict -> JSON file; str -> raw file text."""
+    if settings is None:
+        return NO_SETTINGS
+    path = os.path.join(TMP, "settings-%d.json" % len(os.listdir(TMP)))
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(settings if isinstance(settings, str) else json.dumps(settings))
+    return path
+
+
+def call_guard(payload_obj, settings=None, extra_env=None):
+    """Send a payload as UTF-8 bytes on stdin, return the parsed verdict.
+
+    The guard is always pointed at a settings file owned by this run, so a
+    pretool_guard_settings.json the user keeps next to the script cannot change
+    the expected verdicts.
+    """
     raw = json.dumps(payload_obj, ensure_ascii=False).encode("utf-8")
     env = os.environ.copy()
-    env.pop("AGY_HOOK_DEFAULT_DECISION", None)
-    env.pop("AGY_HOOK_LOG_ALL", None)
+    for key in ENV_KEYS:
+        env.pop(key, None)
+    env["AGY_HOOK_SETTINGS"] = settings_file(settings)
+    env.update(extra_env or {})
     proc = subprocess.run(
         GUARD_CMD,
         input=raw, capture_output=True, timeout=90, env=env,
@@ -98,13 +128,298 @@ def payload(command, conversation="selftest", step=1, cwd=None):
 results = []
 
 
-def check(label, command, expected, conversation="selftest", cwd=None):
-    got, raw = call_guard(payload(command, conversation=conversation, cwd=cwd))
+def check(label, command, expected, conversation="selftest", cwd=None, settings=None, extra_env=None):
+    got, raw = call_guard(payload(command, conversation=conversation, cwd=cwd),
+                          settings=settings, extra_env=extra_env)
     ok = got == expected
     results.append((ok, label, expected, got, command))
     print("%-4s %-46s expected=%-6s got=%-6s" % ("PASS" if ok else "FAIL",
                                                  label, expected, got))
     return got
+
+
+# ---------------------------------------------------------------------------
+# TIER_CORPUS: (expected tier, scope, command)
+#   tier  : "block"   always denied
+#           "confirm" answered with confirmDecision (deny unless the user opts in)
+#           "pass"    not flagged; answered with defaultDecision
+#   scope : "all"  both guards        "unix" Node guard only (UNIX_RULES)
+# Adding a rule? Add the commands it should catch AND the look-alikes it must
+# leave alone. Changing a rule? Every line whose outcome moves needs a reason.
+# ---------------------------------------------------------------------------
+TIER_CORPUS = [
+    # --- block: irreversible, and never inside a workspace -------------------
+    ("block", "all", "rm -rf /"),
+    ("block", "all", "rm -rf / tmp/build"),
+    ("block", "all", "rm -rf ~"),
+    ("block", "all", "rm -rf ~/*"),
+    ("block", "all", 'sudo rm -rf "$HOME"'),
+    ("block", "all", "rm -rf --no-preserve-root /"),
+    ("block", "all", "rm -rf /usr/"),
+    ("block", "all", "rm -rf /Users/alice"),
+    ("block", "all", "Remove-Item C:\\ -Recurse -Force"),
+    ("block", "all", "Remove-Item $env:USERPROFILE -Recurse -Force"),
+    ("block", "all", "rd /s /q C:\\Users"),
+    ("block", "all", "del /f /s /q C:\\*"),
+    ("block", "all", 'find / -name "*.log" -delete'),
+    ("block", "all", "find ~ -type f -exec rm {} +"),
+    ("block", "all", "Format-Volume -DriveLetter D"),
+    ("block", "all", "format D: /q"),
+    ("block", "all", "Clear-Disk -Number 1 -RemoveData"),
+    ("block", "unix", "diskutil eraseDisk APFS Blank /dev/disk4"),
+    ("block", "unix", "sudo dd if=/dev/zero of=/dev/rdisk4 bs=1m"),
+    ("block", "unix", "mkfs.ext4 /dev/sdb1"),
+    ("block", "unix", "csrutil disable"),
+    # --- confirm: recursive deletes --------------------------------------------
+    ("confirm", "all", "rm -rf build"),
+    ("confirm", "all", "rm -r dist"),
+    ("confirm", "all", "rm -rf node_modules/.cache"),
+    ("confirm", "all", "rm -rf ~/Projects/tmp"),
+    ("confirm", "all", "rm -rf /usr/local/foo"),
+    ("confirm", "all", "rm -rf $HOME/.cache/app"),
+    ("confirm", "all", "/bin/rm -rf src"),
+    ("confirm", "all", "\\rm -rf src"),
+    ("confirm", "all", "sudo rm -rf ./out"),
+    ("confirm", "all", "xargs rm -rf < list.txt"),
+    ("confirm", "all", 'bash -lc "rm -rf /tmp/x"'),
+    ("confirm", "all", "Remove-Item -Recurse src"),
+    ("confirm", "all", "Remove-Item C:\\temp\\x -Recurse -Force"),
+    ("confirm", "all", "rd /s /q C:\\foo"),
+    ("confirm", "all", "del /f /s /q C:\\foo\\*"),
+    ("confirm", "all", 'find . -name "*.pyc" -delete'),
+    ("confirm", "all", "find build -type d -exec /bin/rm -rf {} +"),
+    ("confirm", "all", 'python -c "import shutil; shutil.rmtree(\'src\')"'),
+    ("confirm", "all", "node -e \"require('fs').rmSync('src',{recursive:true})\""),
+    ("confirm", "all", "awk 'BEGIN{system(\"rm -rf src\")}'"),
+    # --- confirm: text that ends up being executed ---------------------------------
+    ("confirm", "all", "echo 'rm -rf src' | sh"),
+    ("confirm", "all", "printf 'git reset --hard' | sudo bash"),
+    ("confirm", "all", "eval \"$(echo 'rm -rf src')\""),
+    # --- confirm: git history and working tree ---------------------------------------
+    ("confirm", "all", "git reset --hard HEAD~1"),
+    ("confirm", "all", "git -C ./repo reset --hard"),
+    ("confirm", "all", "/usr/bin/git reset --hard"),
+    ("confirm", "all", '& "C:\\Program Files\\Git\\cmd\\git.exe" reset --hard'),
+    ("confirm", "all", "git push --force origin main"),
+    ("confirm", "all", "git push origin +main"),
+    ("confirm", "all", "git clean -fd"),
+    ("confirm", "all", "git checkout -- ."),
+    ("confirm", "all", "git checkout ."),
+    ("confirm", "all", "git checkout -- src/"),
+    ("confirm", "all", "git restore ."),
+    ("confirm", "all", "git restore src/"),
+    ("confirm", "all", "git restore -s HEAD~1 ."),
+    ("confirm", "all", "git stash clear"),
+    ("confirm", "all", "git switch --discard-changes main"),
+    ("confirm", "all", "git rm -rf src"),
+    # --- confirm: registry, proxy clients, network ------------------------------------
+    ("confirm", "all", "Remove-Item HKLM:\\Software\\Foo"),
+    ("confirm", "all", "reg delete HKCU\\Software\\Foo /f"),
+    ("confirm", "all", "taskkill /F /IM mihomo.exe"),
+    ("confirm", "all", "Stop-Service -Name tun2socks -Force"),
+    ("confirm", "all", "netsh winhttp set proxy 127.0.0.1:7890"),
+    ("confirm", "all", "route delete 0.0.0.0"),
+    ("confirm", "all", "ip route delete 10.0.0.0/8 dev tun9"),
+    ("confirm", "unix", "killall ClashX"),
+    ("confirm", "unix", "sudo systemctl stop mihomo"),
+    ("confirm", "unix", "networksetup -setwebproxy Wi-Fi 127.0.0.1 7890"),
+    ("confirm", "unix", "sudo ifconfig en0 down"),
+    # --- pass: look-alikes that delete nothing or only what was asked -----------------
+    ("pass", "all", "npm test"),
+    ("pass", "all", "ls -la"),
+    ("pass", "all", "rm build/output.log"),
+    ("pass", "all", "rm -f tmp.txt"),
+    ("pass", "all", "git status"),
+    ("pass", "all", "git clean -n -d"),
+    ("pass", "all", "git clean --dry-run -fd"),
+    ("pass", "all", "git rm -r --cached node_modules"),
+    ("pass", "all", "git restore --staged ."),
+    ("pass", "all", "git checkout -- src/a.ts"),
+    ("pass", "all", "git checkout -b feature/x origin/feature/x"),
+    ("pass", "all", "git push --force-with-lease origin my-feature"),
+    ("pass", "all", "git stash pop"),
+    ("pass", "all", "git branch -d merged-branch"),
+    ("pass", "all", 'git commit -m "docs: warn about rm -rf in clean script"'),
+    ("pass", "all", 'grep -rn "rm -rf" scripts/'),
+    ("pass", "all", 'sed -i "s/rm -rf/trash/" clean.sh'),
+    ("pass", "all", "echo 'rm -rf src' > notes.txt"),
+    ("pass", "all", "echo 'git reset --hard' | tee -a notes.txt"),
+    ("pass", "all", "pnpm rm -r lodash"),
+    ("pass", "all", "docker run --rm -it img sh"),
+    ("pass", "all", "docker container rm -f web"),
+    ("pass", "all", 'python -c "import os; os.remove(\'tmp.txt\')"'),
+    ("pass", "all", 'find . -name "*.ts" -newer build.stamp'),
+    ("pass", "all", "cd / && ls"),
+    ("pass", "all", "tar -xzf a.tgz -C /tmp/x"),
+    ("pass", "all", "Get-ChildItem C:\\ | Select-Object Name"),
+    ("pass", "all", "Get-Process clash,mihomo,sing-box -ErrorAction SilentlyContinue"),
+    ("pass", "all", "curl.exe -I -s -m 5 https://example.com"),
+    ("pass", "unix", "networksetup -getwebproxy Wi-Fi"),
+    ("pass", "unix", "scutil --proxy"),
+    # --- pass, but KNOWN GAPS: destructive and not flagged today -----------------------
+    # Listed so that the limits of a regex blocklist are written down, and so
+    # that closing one of these is a deliberate change to this table.
+    ("pass", "all", "git branch -D feature"),          # -D vs -d needs case-sensitive matching
+    ("pass", "all", "X=rm; $X -rf src"),               # indirection through a variable
+    ("pass", "all", '[IO.Directory]::Delete("src", $true)'),
+    ("pass", "all", "rsync -a --delete empty/ src/"),
+    ("pass", "all", "truncate -s 0 data.db"),
+    ("pass", "all", "mv src /tmp/gone"),
+    ("pass", "all", "docker system prune -af --volumes"),
+    ("pass", "all", "python cleanup.py"),              # whatever the script does is invisible here
+]
+
+TIER_DECISION = {"block": "deny", "confirm": "force_ask", "pass": PASS_DECISION}
+
+
+# ---------------------------------------------------------------------------
+# Static comparison of the two guard scripts. Nothing from either file is
+# executed: string literals are lifted out of the source text and compared.
+# ---------------------------------------------------------------------------
+def _js_literal(src, i):
+    quote = src[i]
+    i += 1
+    out = []
+    while src[i] != quote:
+        if src[i] == "\\":
+            i += 1
+            out.append({"n": "\n", "r": "\r", "t": "\t"}.get(src[i], src[i]))
+        else:
+            out.append(src[i])
+        i += 1
+    return "".join(out), i + 1
+
+
+def _ps_literal(src, i):
+    i += 1
+    out = []
+    while True:
+        if src[i] == "'":
+            if src[i + 1:i + 2] == "'":
+                out.append("'")
+                i += 2
+                continue
+            return "".join(out), i + 1
+        out.append(src[i])
+        i += 1
+
+
+def _concat(src, i, consts, literal, name_rx):
+    """Evaluate  'text' + NAME + 'text' ...  starting at src[i]."""
+    parts = []
+    while True:
+        while src[i] in " \t":
+            i += 1
+        if src[i] in "'\"":
+            value, i = literal(src, i)
+        else:
+            m = re.match(name_rx, src[i:])
+            if not m:
+                raise ValueError("not a string expression")
+            value = consts[m.group(1)]
+            i += m.end()
+        parts.append(value)
+        while i < len(src) and src[i] in " \t":
+            i += 1
+        if i < len(src) and src[i] == "+":
+            i += 1
+            continue
+        return "".join(parts), i
+
+
+def lift_cjs(text):
+    """Return (string constants, [(pattern, tier)]) for WINDOWS_RULES in pretool_guard.cjs."""
+    name_rx = r"([A-Z_][A-Z0-9_]*)"
+    consts = {}
+    for m in re.finditer(r"^const ([A-Z_][A-Z0-9_]*) = ", text, re.M):
+        try:
+            consts[m.group(1)], _ = _concat(text, m.end(), consts, _js_literal, name_rx)
+        except (ValueError, KeyError, IndexError):
+            pass  # not a plain string constant
+    block = re.search(r"^const WINDOWS_RULES = \[\n(.*?)^\];", text, re.M | re.S).group(1)
+    rules = []
+    for line in block.splitlines():
+        line = line.strip()
+        if not line.startswith("["):
+            continue
+        pattern, i = _concat(line, 1, consts, _js_literal, name_rx)
+        _, i = _concat(line, i + 1, consts, _js_literal, name_rx)
+        m = re.match(r"\s*,\s*'(\w+)'", line[i:])
+        rules.append((pattern, m.group(1) if m else "confirm"))
+    return consts, rules
+
+
+def lift_ps1(text):
+    """Return (string constants, [(pattern, tier)]) for the rule table in pretool_guard.ps1."""
+    name_rx = r"\$([A-Za-z][A-Za-z0-9]*)"
+    consts = {}
+    for m in re.finditer(r"^\$([A-Za-z][A-Za-z0-9]*) = ", text, re.M):
+        line_end = text.find("\n", m.end())
+        try:
+            consts[m.group(1)], _ = _concat(text[:line_end], m.end(), consts, _ps_literal, name_rx)
+        except (ValueError, KeyError, IndexError):
+            pass
+    rules = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line.startswith("@{ rx = "):
+            continue
+        pattern, _ = _concat(line, len("@{ rx = "), consts, _ps_literal, name_rx)
+        m = re.search(r";\s*tier\s*=\s*'(\w+)'\s*\}\s*,?\s*$", line)
+        rules.append((pattern, m.group(1) if m else "confirm"))
+    return consts, rules
+
+
+# Pattern constants that must hold the same regex in both scripts: (cjs name, ps1 name).
+SHARED_CONSTANTS = [
+    ("B", "boundary"), ("GIT_PREFIX", "gitPrefix"), ("ROOTISH", "rootish"),
+    ("PIPE_GUARD", "pipeGuard"), ("MASK_SEARCH", "maskSearch"), ("MASK_PRINT", "maskPrint"),
+    ("SUBSTITUTION", "substitution"), ("MASK_GIT_MSG", "maskGitMsg"),
+    ("SUBCMD_GIT", "subcmdGit"), ("SUBCMD_PM", "subcmdPm"), ("SUBCMD_DOCKER", "subcmdDocker"),
+]
+
+
+def static_check(label, ok, detail=""):
+    results.append((ok, label, "same", "same" if ok else "differ", detail))
+    print("%-4s %-46s %s" % ("PASS" if ok else "FAIL", label, "" if ok else detail))
+
+
+def compare_guards():
+    cjs_path = os.path.join(HERE, "pretool_guard.cjs")
+    ps1_path = os.path.join(HERE, "pretool_guard.ps1")
+    if not (os.path.isfile(cjs_path) and os.path.isfile(ps1_path)):
+        print("SKIP both guard scripts are needed for the comparison; only one is present")
+        return
+    with open(cjs_path, encoding="utf-8") as fh:
+        cjs_text = fh.read()
+    with open(ps1_path, "rb") as fh:
+        ps1_bytes = fh.read()
+    ps1_text = ps1_bytes.decode("utf-8", errors="replace")
+
+    try:
+        js_consts, js_rules = lift_cjs(cjs_text)
+        ps_consts, ps_rules = lift_ps1(ps1_text)
+    except Exception as exc:  # a layout change in either table must fail loudly, not pass silently
+        static_check("rule tables could be read", False, "could not parse a rule table: %r" % (exc,))
+        return
+
+    diffs = []
+    for js_name, ps_name in SHARED_CONSTANTS:
+        if js_consts.get(js_name) is None or js_consts.get(js_name) != ps_consts.get(ps_name):
+            diffs.append("%s / $%s" % (js_name, ps_name))
+    static_check("shared pattern constants identical", not diffs, "differ: " + ", ".join(diffs))
+
+    diffs = []
+    if len(js_rules) != len(ps_rules):
+        diffs.append("rule count cjs=%d ps1=%d" % (len(js_rules), len(ps_rules)))
+    for n, (a, b) in enumerate(zip(js_rules, ps_rules), 1):
+        if a != b:
+            diffs.append("rule %d" % n)
+    static_check("rule tables identical (%d rules)" % len(js_rules), not diffs and bool(js_rules),
+                 "differ: " + ", ".join(diffs))
+
+    bad = sorted({b for b in ps1_bytes if b > 127})
+    static_check("pretool_guard.ps1 is pure ASCII", not bad, "non-ASCII bytes present")
 
 
 def main():
@@ -187,6 +502,26 @@ def main():
         ("python -c shutil.rmtree", 'python -c "import shutil; shutil.rmtree(\'build\')"'),
         ("node -e fs.rmSync", 'node -e "fs.rmSync(\'build\', {recursive:true})"'),
         ("grep followed by && rm -rf", 'grep -rn "rm -rf" scripts/ && rm -rf build --token sk-secret1234567890'),
+        # Path-prefixed executables are the same commands.
+        ("/bin/rm -rf (absolute path)", "/bin/rm -rf src"),
+        ("\\rm -rf (alias bypass)", "\\rm -rf src"),
+        ("/usr/bin/git reset --hard", "/usr/bin/git reset --hard"),
+        ("quoted git.exe path reset --hard", '& "C:\\Program Files\\Git\\cmd\\git.exe" reset --hard'),
+        # Printed text that is piped into a shell, or re-read through substitution, is code.
+        ("echo ... | sh", "echo 'rm -rf src' | sh"),
+        ("printf ... | sudo bash", "printf 'git reset --hard' | sudo bash"),
+        ("eval of echoed text", "eval \"$(echo 'rm -rf src')\""),
+        # Whole-tree / whole-directory discards and their neighbours.
+        ("git checkout . (no --)", "git checkout ."),
+        ("git checkout -- src/", "git checkout -- src/"),
+        ("git restore src/", "git restore src/"),
+        ("git restore -s HEAD~1 . (source, not staged)", "git restore -s HEAD~1 ."),
+        ("git stash clear", "git stash clear"),
+        ("git switch --discard-changes", "git switch --discard-changes main"),
+        ("git rm -rf", "git rm -rf src"),
+        ("find -exec /bin/rm", "find build -type d -exec /bin/rm -rf {} +"),
+        ("bare rmtree import", 'python -c "from shutil import rmtree; rmtree(\'src\')"'),
+        ("require(fs).rmSync recursive", "node -e \"require('fs').rmSync('src',{recursive:true})\""),
     ]
     for idx, (label, cmd) in enumerate(edge_deny_cases):
         check(label, cmd, "deny", conversation="s4-deny-%d" % idx)
@@ -196,6 +531,18 @@ def main():
         ("git commit -m with rm -rf", 'git commit -m "fix rm -rf and git reset --hard regex"'),
         ("git push --force-with-lease", "git push --force-with-lease origin main"),
         ("git restore --staged . (safe unstage)", "git restore --staged ."),
+        ("git restore --staged src/", "git restore --staged src/"),
+        ("git clean dry run", "git clean -n -d"),
+        ("git clean --dry-run -fd", "git clean --dry-run -fd"),
+        ("git rm -r --cached (untrack only)", "git rm -r --cached node_modules"),
+        ("pnpm rm -r (dependency, not files)", "pnpm rm -r lodash"),
+        ("docker rm (container)", "docker container rm -f web"),
+        ("git checkout single file", "git checkout -- src/a.ts"),
+        ("git push --force-if-includes", "git push --force-with-lease --force-if-includes origin main"),
+        ("interpreter single-file delete", 'python -c "import os; os.remove(\'tmp.txt\')"'),
+        ("sed script mentioning rm -rf", 'sed -i "s/rm -rf/trash/" clean.sh'),
+        ("echo text to a file", "echo 'rm -rf src' > notes.txt"),
+        ("echo text piped to tee", "echo 'git reset --hard' | tee -a notes.txt"),
         ("repeat benign build #1", "npm run build"),
         ("repeat read-only ls #1", "ls -la"),
     ]
@@ -254,6 +601,50 @@ def main():
         ]
         for idx, (label, cmd) in enumerate(unix_pass_cases):
             check(label, cmd, PASS_DECISION, conversation="s5-pass-%d" % idx)
+
+    print()
+    print("=" * 78)
+    print("SECTION 6  tier corpus, replayed with confirmDecision=force_ask")
+    print("=" * 78)
+    opt_in = {"confirmDecision": "force_ask"}
+    for idx, (tier, scope, cmd) in enumerate(TIER_CORPUS):
+        if scope == "unix" and GUARD != "node":
+            continue
+        check("%-7s %s" % (tier, cmd[:38]), cmd, TIER_DECISION[tier],
+              conversation="s6-%d" % idx, settings=opt_in)
+
+    print()
+    print("=" * 78)
+    print("SECTION 7  settings file and environment precedence")
+    print("=" * 78)
+    check("file: defaultDecision=allow", "npm test", "allow",
+          conversation="s7-a", settings={"defaultDecision": "allow"})
+    check("env beats file (default)", "npm test", "ask",
+          conversation="s7-b", settings={"defaultDecision": "allow"},
+          extra_env={"AGY_HOOK_DEFAULT_DECISION": "ask"})
+    check("file: confirmDecision=force_ask", "rm -r build", "force_ask",
+          conversation="s7-c", settings={"confirmDecision": "force_ask"})
+    check("block tier ignores confirmDecision", "rm -rf /", "deny",
+          conversation="s7-d", settings={"confirmDecision": "ask", "defaultDecision": "allow"})
+    check("env beats file (confirm)", "rm -r build", "deny",
+          conversation="s7-e", settings={"confirmDecision": "force_ask"},
+          extra_env={"AGY_HOOK_CONFIRM_DECISION": "deny"})
+    check("broken file -> strict default (pass)", "npm test", "ask",
+          conversation="s7-f", settings="{ not json")
+    check("broken file -> strict default (confirm)", "rm -r build", "deny",
+          conversation="s7-g", settings="{ not json")
+    check("unknown values ignored (pass)", "npm test", "ask",
+          conversation="s7-h", settings={"defaultDecision": "auto_approve", "confirmDecision": "allow"})
+    check("confirm tier can never become allow", "rm -r build", "deny",
+          conversation="s7-i", settings={"defaultDecision": "auto_approve", "confirmDecision": "allow"})
+
+    print()
+    print("=" * 78)
+    print("SECTION 8  static comparison of pretool_guard.cjs and pretool_guard.ps1")
+    print("=" * 78)
+    compare_guards()
+
+    shutil.rmtree(TMP, ignore_errors=True)
 
     print()
     print("=" * 78)

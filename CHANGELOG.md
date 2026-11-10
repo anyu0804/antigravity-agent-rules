@@ -1,5 +1,20 @@
 # Changelog
 
+## [Unreleased]
+
+Hook 守卫层（`pretool_guard.ps1` / `pretool_guard.cjs` / `verify-hook.py`）。**默认行为不变**：不加设置文件时，被标记的命令仍然全部返回 `deny`，其余命令仍然返回 `ask`。
+
+- **修复 v1.3.0 引入的回退（v1.2.3 能拦、v1.3.0 放过）**：
+  - 带路径的可执行文件：`/bin/rm -rf`、`\rm -rf`、`/usr/bin/git reset --hard`、`"C:\...\git.exe" reset --hard`。
+  - 引号掩码把会被执行的文本当成了数据：`echo '...' | sh`、`printf '...' | bash`；命令行含 `$(...)`、反引号或 `eval` 时不再对 `echo` / `printf` 做掩码。
+- **修复 v1.3.0 新增的误拦**：`git clean -n` / `--dry-run` 预演、`git rm -r --cached`、`pnpm rm -r`、`docker rm`（`rm` 作为子命令）、解释器里删除单个文件（与 `rm <file>` 一致，不标记）。
+- **补齐相邻写法**：不带 `--` 的 `git checkout .`、整目录的 `checkout` / `restore`、`git restore -s <rev> .`（原豁免按不区分大小写匹配 `-S`，把 `--source` 也豁免了）、`git stash drop` / `clear`、`git switch --discard-changes`、`git rm -f`、`find -exec /bin/rm`、裸 `rmtree()` 与 `require('fs').rmSync`。
+- **两档拦截**：规则带档位。block 档（格式化磁盘、删除根目录 / 家目录 / 系统目录、从 `/` 或 `~` 起 `find -delete`）恒定 `deny`；confirm 档（其余全部规则）返回 `confirmDecision`，默认 `deny`，可改为 `force_ask`。
+- **设置文件**：可选的 `pretool_guard_settings.json`（`defaultDecision` / `confirmDecision` / `logAll`），解决从 GUI 启动的客户端读不到 shell 环境变量的问题；环境变量仍然优先，文件损坏或取值无效时回落到最严格的默认值。新增环境变量 `AGY_HOOK_CONFIRM_DECISION`、`AGY_HOOK_SETTINGS`。
+- **测试**：`verify-hook.py` 新增三节——110 条命令的档位语料（`TIER_CORPUS`，含不应标记的近似命令与一组已知漏拦）、设置文件与环境变量优先级、两份守卫脚本的静态比对（共享正则常量、规则表、`ps1` 纯 ASCII）。套件规模：Node 守卫 241 项，PowerShell 守卫 193 项。
+- **文档**：更正 README 中「`ask` 交还宿主审批策略」的表述（按当前 Hooks 文档，交还策略的是 `allow`，`ask` 是请求确认，实际行为以客户端版本为准）。
+- **验证状态**：Node 守卫 241/241（`VERIFIED`，离线自检）。PowerShell 守卫未实跑（编写环境没有 PowerShell），仅通过与 Node 版的静态比对，需在 Windows 上运行 `verify-hook.py --guard ps`（`NOT_PROVEN`）。`ask` / `allow` / `force_ask` 在宿主侧的实际行为未在真机验证（`NOT_PROVEN`）。
+
 ## [1.3.0] - 2026-11-11
 
 - **解决 `dsh-crew` 重名与 `mcp_config.json` 覆盖冲突（重命名为 `mcp/dsh-bridge` v0.2.0）**：

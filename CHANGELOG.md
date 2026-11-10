@@ -1,8 +1,8 @@
 # Changelog
 
-## [Unreleased]
+## [1.3.1] - 2026-11-11
 
-Hook 守卫层（`pretool_guard.ps1` / `pretool_guard.cjs` / `verify-hook.py`）。**默认行为不变**：不加设置文件时，被标记的命令仍然全部返回 `deny`，其余命令仍然返回 `ask`。
+Hook 守卫层（`pretool_guard.ps1` / `pretool_guard.cjs` / `verify-hook.py`）与 `mcp/dsh-bridge` 迁移补全。**默认行为相对 1.3.0 不变**：不加设置文件时，被标记的命令仍然全部返回 `deny`，其余命令仍然返回 `ask`。
 
 - **修复 v1.3.0 引入的回退（v1.2.3 能拦、v1.3.0 放过）**：
   - 带路径的可执行文件：`/bin/rm -rf`、`\rm -rf`、`/usr/bin/git reset --hard`、`"C:\...\git.exe" reset --hard`。
@@ -11,11 +11,18 @@ Hook 守卫层（`pretool_guard.ps1` / `pretool_guard.cjs` / `verify-hook.py`）
 - **补齐相邻写法**：不带 `--` 的 `git checkout .`、整目录的 `checkout` / `restore`、`git restore -s <rev> .`（原豁免按不区分大小写匹配 `-S`，把 `--source` 也豁免了）、`git stash drop` / `clear`、`git switch --discard-changes`、`git rm -f`、`find -exec /bin/rm`、裸 `rmtree()` 与 `require('fs').rmSync`。
 - **两档拦截**：规则带档位。block 档（格式化磁盘、删除根目录 / 家目录 / 系统目录、从 `/` 或 `~` 起 `find -delete`）恒定 `deny`；confirm 档（其余全部规则）返回 `confirmDecision`，默认 `deny`，可改为 `force_ask`。
 - **设置文件**：可选的 `pretool_guard_settings.json`（`defaultDecision` / `confirmDecision` / `logAll`），解决从 GUI 启动的客户端读不到 shell 环境变量的问题；环境变量仍然优先，文件损坏或取值无效时回落到最严格的默认值。新增环境变量 `AGY_HOOK_CONFIRM_DECISION`、`AGY_HOOK_SETTINGS`。
-- **测试**：`verify-hook.py` 新增三节——110 条命令的档位语料（`TIER_CORPUS`，含不应标记的近似命令与一组已知漏拦）、设置文件与环境变量优先级、两份守卫脚本的静态比对（共享正则常量、规则表、`ps1` 纯 ASCII）。套件规模：Node 守卫 241 项，PowerShell 守卫 193 项。
-- **文档**：更正 README 中「`ask` 交还宿主审批策略」的表述（按当前 Hooks 文档，交还策略的是 `allow`，`ask` 是请求确认，实际行为以客户端版本为准）。
-- **验证状态**：Node 守卫 241/241（`VERIFIED`，离线自检）。PowerShell 守卫未实跑（编写环境没有 PowerShell），仅通过与 Node 版的静态比对，需在 Windows 上运行 `verify-hook.py --guard ps`（`NOT_PROVEN`）。`ask` / `allow` / `force_ask` 在宿主侧的实际行为未在真机验证（`NOT_PROVEN`）。
+- **扩展审计日志凭据脱敏**：补齐非 HTTP 协议 URI 内嵌凭据（`postgres://`、`redis://`、`mongodb+srv://` 等 `user:pass@...`）、`curl -u` / `--user`、自定义敏感请求头（`X-API-Key` / `X-Auth-Token` / `Api-Key`）、CLI 短参数密码（`mysql` / `sshpass` 的 `-p<pass>` / `-p <pass>`、`redis-cli -a`）及 AWS Access Key（`AKIA*` / `ASIA*`）的落盘脱敏。
+- **`mcp/dsh-bridge` 旧键自动迁移与重合度说明**：`register-antigravity.mjs` 检测到 `mcp_config.json` 中残留指向本仓库旧路径 `mcp/dsh-crew/dsh-crew.mjs` 的 `mcpServers['dsh-crew']` 条目时自动迁移至 `mcpServers['dsh-bridge']`（继承自定义 `DSH_CREW_WORKSPACE`），绝不触碰社区 `ZSeven-W/dsh-crew` 条目；`mcp/dsh-bridge/README.md` 补充 `2026-11-11` 与上游 `0.1.0` 代码比对口径说明。
+- **测试**：`verify-hook.py` 新增三节——110 条命令的档位语料（`TIER_CORPUS`，含不应标记的近似命令与一组已知漏拦）、设置文件与环境变量优先级、两份守卫脚本的静态比对（共享正则常量、规则表、`ps1` 纯 ASCII），并扩展凭据脱敏断言。套件规模：Node 守卫 242 项，PowerShell 守卫 194 项；`mcp/dsh-bridge/verify.mjs --offline` 扩至 7 项。
+- **文档与状态标签对齐**：更正 README 中「`ask` 交还宿主审批策略」的表述并补充 Antigravity 在线文档（6 值）与桌面端 `2.31.0` 内置文档（4 值）的版本差异提示（as-of `2026-11-11`）；移除 `v1.3.0` 临时新造的 `PRELIMINARY / PARTIALLY_VERIFIED` 标签，严格收敛回 `task-intake` 既定的 `VERIFIED` / `NOT_PROVEN`；在下方 `1.3.0` 变更记录中补标破坏性变更（`BREAKING CHANGES`）。
+- **验证状态**：Node 守卫 242/242（`VERIFIED`，离线自检）；Windows PowerShell 5.1 守卫实跑 194/194（`VERIFIED`，离线自检，`ERROR-FAILOPEN: 0`）；`mcp/dsh-bridge/verify.mjs --offline` 7/7（`VERIFIED`）。`ask` / `allow` / `force_ask` 在宿主 GUI 侧的实际弹窗行为未在各客户端版本逐一真机验证（`NOT_PROVEN`）。
 
 ## [1.3.0] - 2026-11-11
+
+> **BREAKING CHANGES（相对 1.2.x 的破坏性变更）**：
+> 1. **`mcp/dsh-crew` 重命名为 `mcp/dsh-bridge`**：`mcp_config.json` 注册键改为 `mcpServers['dsh-bridge']`（旧手动注册条目在 `1.3.0` 下不会自动移除，`1.3.1` 的 `register-antigravity.mjs` 已补自动迁移）。
+> 2. **`dsh_ask` 默认权限收紧**：默认 `permission` 从 `workspace-write` 改为 `read-only`，需写文件时必须显式传入 `permission: "workspace-write"`。
+> 3. **Hook 非黑名单默认返回改为 `"ask"`**：`pretool_guard.ps1` / `pretool_guard.cjs` 对未命中黑名单的命令默认返回 `{"decision":"ask"}` 而非 `{"decision":"allow"}`（如需恢复自动放行需配置 `defaultDecision: "allow"` 或 `AGY_HOOK_DEFAULT_DECISION=allow`）。
 
 - **解决 `dsh-crew` 重名与 `mcp_config.json` 覆盖冲突（重命名为 `mcp/dsh-bridge` v0.2.0）**：
   - 将仓库内置的单文件 DSH Headless 包装桥从 `mcp/dsh-crew` 重命名为 `mcp/dsh-bridge`（脚本 `dsh-bridge.mjs`、注册键 `mcpServers['dsh-bridge']`、环境变量 `DSH_BRIDGE_*` 并向后兼容 `DSH_CREW_*`），避免与社区早在 2026 年 8 月开源的 [`ZSeven-W/dsh-crew`](https://github.com/ZSeven-W/dsh-crew)（MIT）撞名及互相覆盖 `~/.gemini/config/mcp_config.json` 中的 `mcpServers['dsh-crew']`。
@@ -29,7 +36,7 @@ Hook 守卫层（`pretool_guard.ps1` / `pretool_guard.cjs` / `verify-hook.py`）
 - **规则去个人化、清理未替换占位符与修正 `Gemini 4 Carbon` 验证等级表述**：
   - 移除 `global/GEMINI.md` 中的个人固定笔名「安钰」与 `global/plugin.json` 中的个人化描述，改为通用署名脱敏规则。
   - 移除 `global/GEMINI.md`、`agents/flash-verifier.md`、`skills/client-maintenance/SKILL.md`、`skills/multi-agent-orchestrator/SKILL.md` 中残留的 `<YOUR_PROJECT_PATH>`、`<YOUR_MCP_SERVER>`、`<YOUR_DOMAIN_VERIFIER>`、`<YOUR_CHECK_SCRIPT>`、`<YOUR_PROJECT_REDLINES>`、`<YOUR_HEADLESS_MCP>`、`<YOUR_GUI_MCP>` 占位符及 `multi-agent-orchestrator` 中残留的一处“梯子”措辞（统一改为“用户代理与网络配置”）。
-  - 严格按 `VERIFIED / NOT_PROVEN` 纪律修正 `README.md` 模型适配矩阵：将 2026-11-10 刚上线的 `Gemini 4 Carbon` 从长期 `VERIFIED` 中单列为 `PRELIMINARY / PARTIALLY_VERIFIED`（上线首日初步适配，长周期 `/swarm` 压测标 `NOT_PROVEN`）。
+  - 修正 `README.md` 模型适配矩阵：将 2026-11-10 刚上线的 `Gemini 4 Carbon` 从长期 `VERIFIED` 中单列为 `PRELIMINARY / PARTIALLY_VERIFIED`（上线首日初步适配，长周期 `/swarm` 压测标 `NOT_PROVEN`；注：该临时标签已在 `1.3.1` 收敛回标准 `VERIFIED` / `NOT_PROVEN`）。
   - 更新 `LICENSE` 与 `README.md` 版权声明：补齐共创者 `len (LEN5010)` 的版权署名（`Copyright (c) 2026 安钰, len (LEN5010) and contributors`）。
 
 ## [1.2.3] - 2026-11-11

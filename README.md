@@ -24,7 +24,7 @@
 ### Windows（PowerShell 5.1 / `pwsh` 7）
 
 ```powershell
-# 一键全量安装 5 层配置并自动跑完 193 项 Hook 离线回归自检（自动化环境跳过确认可加 -Force）
+# 一键全量安装 5 层配置并自动跑完 194 项 Hook 离线回归自检（自动化环境跳过确认可加 -Force）
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 
 # 只装 Hook（防强删 + 代理/网络保护），不动 GEMINI.md、config.json 和规则/Skill/文风层
@@ -37,7 +37,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 ### macOS / Linux（Node.js >= 18）
 
 ```bash
-# 一键全量安装 5 层配置并自动跑完 241 项 Hook 离线回归自检（跳过确认可加 --force，指定工作区可加 --workspace-path DIR）
+# 一键全量安装 5 层配置并自动跑完 242 项 Hook 离线回归自检（跳过确认可加 --force，指定工作区可加 --workspace-path DIR）
 ./install.sh
 
 # 只装 Hook 层（等价于 Windows 的 install.ps1 -HookOnly）
@@ -52,7 +52,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 2. 确认：列出 `~/.gemini` 下即将被合并或覆盖的文件/目录，等你输入 `y` 确认后才继续（默认否，加 `-Force` / `--force` 可跳过）。
 3. 备份：把安装前已存在的文件与目录完整备份到 `~/.gemini/backup_antigravity_rules_<timestamp>/`，同时记录 `manifest.json`（含 `mode: full | hook-only`）。
 4. 无损合并与分发：合并 `GEMINI.md` 与 `hooks.json`，将 `file:///<YOUR_PATH>/.gemini/` 链接占位符替换为当前用户家目录正斜杠路径，分发 5 层文件（5 个插件 + 2 个独立 Skills）并在 `config.json` 中启用 5 个插件。
-5. 脚本回归自检：自动运行 `verify-hook.py` 验证全部断言通过（Windows PowerShell 守卫 193 项，macOS / Linux Node 守卫 241 项，含密钥脱敏与零 `ERROR-FAILOPEN` 校验）。
+5. 脚本回归自检：自动运行 `verify-hook.py` 验证全部断言通过（Windows PowerShell 守卫 194 项，macOS / Linux Node 守卫 242 项，含密钥脱敏与零 `ERROR-FAILOPEN` 校验）。
 
 只想要拦截功能、不想换掉自己的规则，就用 `-HookOnly`（Windows）或 `--hook-only`（macOS / Linux）：只合并 `hooks.json` 并部署 `scripts/`，第 4 步里的 `GEMINI.md`、插件和 `config.json` 全部跳过，自检照常运行。卸载脚本会从备份的 `manifest.json` 自动识别 `full` 或 `hook-only` 模式，按对应范围还原。
 
@@ -114,7 +114,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 
 环境变量 `AGY_HOOK_DEFAULT_DECISION` / `AGY_HOOK_CONFIRM_DECISION` / `AGY_HOOK_LOG_ALL` 优先于文件，`AGY_HOOK_SETTINGS` 可指向另一份设置文件。文件缺失、JSON 损坏或取值无效时，一律回落到最严格的默认值（`ask` / `deny`）。`force_ask` 在 `/swarm` 后台 Worker 等无人应答场景下的宿主行为尚未在真机验证（`NOT_PROVEN`），所以没有把它设为默认。
 
-审计日志 `hook_log.jsonl` 默认仅记录 `DENY-DANGER`、`CONFIRM-DANGER` 与 `ERROR-FAILOPEN`（不记录日常放行命令，除非开启 `logAll`），并在写入前对命令行中的 Bearer Token、`sk-*`/`ghp_*`/`AIza*`、`--token`/`--password`/`API_KEY=` 等敏感凭据做正则脱敏。
+审计日志 `hook_log.jsonl` 默认仅记录 `DENY-DANGER`、`CONFIRM-DANGER` 与 `ERROR-FAILOPEN`（不记录日常放行命令，除非开启 `logAll`），并在写入前对命令行中的 Bearer Token、`sk-*`/`ghp_*`/`AIza*`/`AKIA*`、任意协议 URI 内嵌凭据（如 `https://user:pass@...`、`postgres://user:pass@...`）、`curl -u`、自定义敏感请求头、`--token`/`--password`/`-p`/`-a`/`API_KEY=` 等敏感凭据做正则脱敏。
 
 另外还有 [`hooks/scripts/read_loop_guard.cjs`](./hooks/scripts/read_loop_guard.cjs)（配合 [`read_loop_settings.json`](./hooks/scripts/read_loop_settings.json)），用来监测同一会话对未变更文件相同行号区间的重复读取（`repeatLimit: 3`），当前默认只跑在 `PostToolUse` 的 `observe` 模式，`enforce` 阻断模式标 `NOT_PROVEN`。
 
@@ -130,11 +130,11 @@ Antigravity 往 Hook 的 `stdin` 发送的是原始 UTF-8 字节流，但中文 
 
 ### 3. 离线脚本回归自检（`verify-hook.py`）与宿主真机挂载验证
 
-每次修改 `pretool_guard.ps1` 或 `pretool_guard.cjs` 后，运行 [`hooks/scripts/verify-hook.py`](./hooks/scripts/verify-hook.py) 可执行全量离线回归校验（Windows PowerShell 守卫 **193 项**，macOS / Linux Node 守卫 **241 项**）：
+每次修改 `pretool_guard.ps1` 或 `pretool_guard.cjs` 后，运行 [`hooks/scripts/verify-hook.py`](./hooks/scripts/verify-hook.py) 可执行全量离线回归校验（Windows PowerShell 守卫 **194 项**，macOS / Linux Node 守卫 **242 项**）：
 
 ```bash
-python ~/.gemini/config/scripts/verify-hook.py                # Windows 默认测 PS 版 (193 项)
-python ~/.gemini/config/scripts/verify-hook.py --guard node   # 测跨平台 Node 版 (241 项)
+python ~/.gemini/config/scripts/verify-hook.py                # Windows 默认测 PS 版 (194 项)
+python ~/.gemini/config/scripts/verify-hook.py --guard node   # 测跨平台 Node 版 (242 项)
 ```
 
 跑完除了要求 `FAIL 0`、检查 `hook_log.jsonl` 中 `ERROR-FAILOPEN` 为 `0` 外，还会自动断言日常非拦截命令未被写入日志、且命令行中的测试密钥 `sk-secret...` 已被脱敏为 `<REDACTED>`。
@@ -168,15 +168,15 @@ flowchart TD
 
 | 仓库内路径 | 原始部署路径（脱敏） | 所属层级 | 触发方式 | 一句话作用 |
 | :--- | :--- | :--- | :--- | :--- |
-| [`install.ps1`](./install.ps1) | 仓库根目录执行（Windows 一键部署入口） | 自动化部署 (`root`) | 手动执行（首次安装或更新规则时） | 预先校验 `config.json`/`hooks.json` 语法、列出待修改项并经 `y` 确认（支持 `-Force` / `-HookOnly`）、自动备份原配置、替换 `<YOUR_PATH>`、按标记/顶层键无损合并 `GEMINI.md` 与 `hooks.json`、分发 5 层文件、启用 5 个插件并跑通 `verify-hook.py` 193 项自检。 |
+| [`install.ps1`](./install.ps1) | 仓库根目录执行（Windows 一键部署入口） | 自动化部署 (`root`) | 手动执行（首次安装或更新规则时） | 预先校验 `config.json`/`hooks.json` 语法、列出待修改项并经 `y` 确认（支持 `-Force` / `-HookOnly`）、自动备份原配置、替换 `<YOUR_PATH>`、按标记/顶层键无损合并 `GEMINI.md` 与 `hooks.json`、分发 5 层文件、启用 5 个插件并跑通 `verify-hook.py` 194 项自检。 |
 | [`uninstall.ps1`](./uninstall.ps1) | 仓库根目录执行（Windows 一键卸载回滚） | 自动化部署 (`root`) | 手动执行（卸载或还原配置时） | 经 `y` 确认后（支持 `-Force`），从最近一次 `backup_antigravity_rules_*` 还原安装前已存在的文件，删除安装前不存在的文件与插件目录，并仅从 `config.json` 移除本仓库的 5 个插件条目。 |
-| [`install.sh`](./install.sh) / [`uninstall.sh`](./uninstall.sh) + [`hooks/unix/hooks-installer.mjs`](./hooks/unix/hooks-installer.mjs) | 仓库根目录执行（macOS / Linux 一键部署与卸载入口） | 自动化部署 (`root`) | 手动执行（macOS / Linux 全量安装、仅装 Hook 或卸载还原时） | 等价于 `install.ps1` / `uninstall.ps1` 的跨平台版（默认 5 层全量安装，支持 `--hook-only`、`--force`、`--workspace-path`）：预校验 `config.json`/`hooks.json`、备份、无损合并 `GEMINI.md` 与 `hooks.json`（改写 Node 绝对路径）、替换 `<YOUR_PATH>` 与 `%USERPROFILE%\`、分发 5 个插件与独立 Skills、启用 `config.json` 插件并跑通 `verify-hook.py --guard node` 241 项自检。 |
+| [`install.sh`](./install.sh) / [`uninstall.sh`](./uninstall.sh) + [`hooks/unix/hooks-installer.mjs`](./hooks/unix/hooks-installer.mjs) | 仓库根目录执行（macOS / Linux 一键部署与卸载入口） | 自动化部署 (`root`) | 手动执行（macOS / Linux 全量安装、仅装 Hook 或卸载还原时） | 等价于 `install.ps1` / `uninstall.ps1` 的跨平台版（默认 5 层全量安装，支持 `--hook-only`、`--force`、`--workspace-path`）：预校验 `config.json`/`hooks.json`、备份、无损合并 `GEMINI.md` 与 `hooks.json`（改写 Node 绝对路径）、替换 `<YOUR_PATH>` 与 `%USERPROFILE%\`、分发 5 个插件与独立 Skills、启用 `config.json` 插件并跑通 `verify-hook.py --guard node` 242 项自检。 |
 | [`hooks/hooks.json`](./hooks/hooks.json) | `~/.gemini/config/hooks.json` | 硬拦截 Hook (`hooks/`) | `PreToolUse` (`run_command`) / `PostToolUse` (读写检索工具) | 注册 `hard-gate` 危险命令硬拦截与 `read-loop` 重复读取检测钩子。 |
-| [`hooks/scripts/pretool_guard.ps1`](./hooks/scripts/pretool_guard.ps1) | `~/.gemini/config/scripts/pretool_guard.ps1` | 硬拦截 Hook (`hooks/`) | `PreToolUse`（Windows 下每次 `run_command` 执行前同步触发） | 底层正则硬拦截递归删除（`rm -r`、`Remove-Item -Recurse`、`find -delete`、解释器单行删除）、`git -C` 全局选项下的 `reset --hard`/`push --force`/`+refspec`/`clean -fd`/`checkout -- .`/`restore .`、删注册表/格式化及杀代理断网命令；支持数据引号掩码防误拦，默认返回 `ask`，仅记录拦截日志并自动脱敏密钥。 |
-| [`hooks/scripts/pretool_guard.cjs`](./hooks/scripts/pretool_guard.cjs) | `~/.gemini/config/scripts/pretool_guard.cjs` | 硬拦截 Hook (`hooks/`) | `PreToolUse`（macOS / Linux 安装时挂载） | `pretool_guard.ps1` 的 Node 跨平台版：通用规则与 PS 版逐条同步，另加 17 条 macOS / Linux 的磁盘、代理客户端与网络设置规则；同样默认返回 `ask` 并对拦截日志做密钥脱敏。 |
+| [`hooks/scripts/pretool_guard.ps1`](./hooks/scripts/pretool_guard.ps1) | `~/.gemini/config/scripts/pretool_guard.ps1` | 硬拦截 Hook (`hooks/`) | `PreToolUse`（Windows 下每次 `run_command` 执行前同步触发） | 底层正则两档拦截（block 档恒定 `deny`，confirm 档默认 `deny`、可经可选同目录 `pretool_guard_settings.json` 设为 `force_ask`）：覆盖递归删除（`rm -r`、`Remove-Item -Recurse`、`find -delete`、解释器单行目录删除）、带路径可执行文件、`git -C` 全局选项下的 `reset --hard`/`push --force`/`+refspec`/`clean -fd`/`checkout .`/`restore .`、删注册表/格式化及杀代理断网命令；支持数据引号掩码防误拦（跳过传给 shell 执行或含命令替换的文本），非黑名单默认返回 `ask`，仅记录标记/故障日志并自动脱敏凭据。 |
+| [`hooks/scripts/pretool_guard.cjs`](./hooks/scripts/pretool_guard.cjs) | `~/.gemini/config/scripts/pretool_guard.cjs` | 硬拦截 Hook (`hooks/`) | `PreToolUse`（macOS / Linux 安装时挂载） | `pretool_guard.ps1` 的 Node 跨平台版：通用规则、两档拦截与 `pretool_guard_settings.json` 配置与 PS 版逐条同步（由 `verify-hook.py` 静态比对校验），另加 17 条 macOS / Linux 的磁盘、代理客户端与网络设置规则；默认返回 `ask` 并对日志做凭据脱敏。 |
 | [`hooks/scripts/read_loop_guard.cjs`](./hooks/scripts/read_loop_guard.cjs) | `~/.gemini/config/scripts/read_loop_guard.cjs` | 硬拦截 Hook (`hooks/`) | `PostToolUse`（默认 `observe`）/ `PreToolUse`（`enforce` 未启用） | 监测同一会话内对未变更文件相同行号区间的重复读取（兼容 `read_file`/`edit_file`/`write_file` 与旧版 `view_file` 等，含省略 `EndLine` 整文件读取及 5MB 日志自动轮转）。默认仅运行在 `observe` 模式；`enforce` 模式标 `NOT_PROVEN`。 |
 | [`hooks/scripts/read_loop_settings.json`](./hooks/scripts/read_loop_settings.json) | `~/.gemini/config/scripts/read_loop_settings.json` | 硬拦截 Hook (`hooks/`) | 被 `read_loop_guard.cjs` 读取 | 配置重复读取检测模式（默认 `"mode": "observe"`，三个 Verified 标志均为 `false`，`enforce` 模式 `NOT_PROVEN`）与重复次数上限（`repeatLimit: 3`）。 |
-| [`hooks/scripts/verify-hook.py`](./hooks/scripts/verify-hook.py) + [`test-cases.txt`](./hooks/scripts/test-cases.txt) | `~/.gemini/config/scripts/` | 硬拦截 Hook (`hooks/`) | 手动或安装时自动执行 | 用含中文路径的真实 UTF-8 载荷对 `pretool_guard.ps1`（193 项）与 `pretool_guard.cjs`（241 项）做全量离线回归校验，验证防漏拦、防误拦、密钥脱敏且 `ERROR-FAILOPEN` 为 `0`。 |
+| [`hooks/scripts/verify-hook.py`](./hooks/scripts/verify-hook.py) + [`test-cases.txt`](./hooks/scripts/test-cases.txt) | `~/.gemini/config/scripts/` | 硬拦截 Hook (`hooks/`) | 手动或安装时自动执行 | 用含中文路径的真实 UTF-8 载荷对 `pretool_guard.ps1`（194 项）与 `pretool_guard.cjs`（242 项）做全量离线回归校验（含双脚本规则同步比对），验证防漏拦、防误拦、凭据脱敏且 `ERROR-FAILOPEN` 为 `0`。 |
 | [`global/GEMINI.md`](./global/GEMINI.md) | `~/.gemini/GEMINI.md` | Always-on 全局规则 (`global/`) | `always_on`（所有会话自动注入） | 定义人机协作态度、防开盒与路径脱敏铁律（默认不填入系统用户名/Git 账号名）、跨平台用户代理与网络配置严格只读红线、按平台分流的 Shell 偏好（Windows: Git Bash/`pwsh` 7；macOS/Linux: 原生 `zsh`/`bash`）、子代理派工原则与可选共享待办入口。 |
 | [`global/AGENTS.md`](./global/AGENTS.md)（含 [`plugin.json`](./global/plugin.json)） | `~/.gemini/config/plugins/anyi-global-rules/rules/AGENTS.md` | Always-on 全局规则 (`global/`) | `trigger: always_on` | 全局工程主规则（§1–§15）：规定动作分级（主工作树修改 ≥5 个文件先问再动，`branch`/`share` 隔离 worktree 未合入主分支前豁免并留 Verifier 终审）、`FAST_PATH`/`INVESTIGATION_PATH` 轮次纪律、禁仪式化严谨、停止与资源边界、交付契约、证据真实性、数据保护、范围锁定及按需专项路由。 |
 | [`global/THINKING-VISIBILITY.md`](./global/THINKING-VISIBILITY.md) | `~/.gemini/config/plugins/anyi-global-rules/rules/THINKING-VISIBILITY.md` | Always-on 全局规则 (`global/`) | `trigger: always_on` | 按运行模式区分思考可见性：主会话交互保留每次工具调用前 1–2 句前置判断；对 `/swarm` 并行执行 worker、`flash-verifier`、`research` 等后台子代理免除逐次工具前置播报，降低高单价输出开销与看板噪音。 |
@@ -213,7 +213,7 @@ flowchart TD
   - 将 `hooks/hooks.json` 放入 `~/.gemini/config/hooks.json`
   - 将 `hooks/scripts/*` 放入 `~/.gemini/config/scripts/`
 - 启用与验证：
-  - 在终端运行离线回归自检脚本验证守卫脚本逻辑（Windows 193 项 / Node 241 项断言）：
+  - 在终端运行离线回归自检脚本验证守卫脚本逻辑（Windows 194 项 / Node 242 项断言）：
     ```bash
     python ~/.gemini/config/scripts/verify-hook.py
     ```
@@ -260,7 +260,7 @@ flowchart TD
 | | [`mcp/dsh-bridge`](./mcp/dsh-bridge/)（原目录名 `dsh-crew`） | [`mcp/agent-bridge`](./mcp/agent-bridge/) |
 |---|---|---|
 | 后端 | 绑定 DSH（`dsh --profile headless`） | 可插拔（`BRIDGE_CMD` 指谁就是谁） |
-| 注册键名 | `mcpServers['dsh-bridge']`（**不占用/不覆盖** `ZSeven-W/dsh-crew` 的 `mcpServers['dsh-crew']`） | `mcpServers['agent-bridge']` |
+| 注册键名 | `mcpServers['dsh-bridge']`（**不占用/不覆盖** `ZSeven-W/dsh-crew` 的 `mcpServers['dsh-crew']`；仅在旧条目明确指向本仓库已移除的 `mcp/dsh-crew/dsh-crew.mjs` 时自动迁移） | `mcpServers['agent-bridge']` |
 | 工具与默认权限 | `dsh_ask`（**默认 `read-only`**）/ `dsh_sessions` / `dsh_status` / `dsh_forget` | `agent_ask` / `agent_sessions` / `agent_status` / `agent_forget` |
 | 验证状态 | **真机跑通 6/6**（`VERIFIED`），含续聊复用同一 session | 假后端 **32/32** 协议断言，**未接任何真实后端（`NOT_PROVEN`）** |
 | 来历与重名说明 | 11 月 7 日作者让 DSH 桌面端 Agent 按「把 dsh-crew 机制接入」指令从零生成，初版沿用了社区 `dsh-crew` 名称导致 `mcp_config.json` 键名冲突；自 0.2.0 起改名为 `dsh-bridge` 并恢复对 [`ZSeven-W/dsh-crew`](https://github.com/ZSeven-W/dsh-crew) 的指向 | 作者原创编写 |
@@ -272,7 +272,7 @@ flowchart TD
 
 ---
 
-## 适配的模型版本（严格区分 `VERIFIED` / `PRELIMINARY` / `NOT_PROVEN`）
+## 适配的模型版本（严格区分 `VERIFIED` / `NOT_PROVEN`）
 
 - **已在日常工程长期实测验证（`VERIFIED`）**：
   - 主力推理与施工模型（Main Agent / `Model: "inherit"`）：
@@ -280,8 +280,8 @@ flowchart TD
     - **Claude Opus 5.5**（`High` / `Medium`）
   - 只读验证与脏活子代理模型（Subagent / `flash-verifier`）：
     - **Gemini 3.8 Flash**（`High` / `model: flash` 3.8f），专职承担高频只读扫描、SHA-256 哈希核对、长篇日志筛查与广度代码搜索，将海量中间输出隔离在子会话内，只向主会话返回 ≤40 行的结构化结论与 `文件:行号`。
-- **上线首日初步适配，长周期压测待验证（`PRELIMINARY / PARTIALLY_VERIFIED`）**：
-  - **Gemini 4 Carbon**（`High` / `Medium` / `Low`，2026-11-10 面向 Ultra 开放）：已基于上线当日的会话实测与模型特性完成 4c/4a 配额分流、`BidiGenerateContent` 分块落盘收紧、UI 容器嵌套密度约束及 `/swarm` 角色分层规则适配；但跨数小时的长周期 `/swarm` 多代理高并发压测与极端边界场景仍属 `NOT_PROVEN`。
+- **已做上线初期适配（单会话基础适配 `VERIFIED`；长周期压测 `NOT_PROVEN`）**：
+  - **Gemini 4 Carbon**（`High` / `Medium` / `Low`，2026-11-10 面向 Ultra 开放）：已基于上线初期的会话实测与模型特性完成 4c/4a 配额分流、`BidiGenerateContent` 分块落盘收紧、UI 容器嵌套密度约束及 `/swarm` 角色分层规则适配（基础会话运行 `VERIFIED`）；跨数小时的长周期 `/swarm` 多代理高并发压测与极端边界场景仍属 `NOT_PROVEN`。
 - **理论上兼容，未在本机实测（`NOT_PROVEN`）**：
   - Gemini 3.1 Pro、Claude Sonnet 4.6 / Opus 4.6、GPT-5.4 / Codex 等其他支持 Rules / Skills / Lifecycle Hooks 协议的同类模型。
 
@@ -292,7 +292,7 @@ flowchart TD
 1. 宿主操作系统与平台差异：
    - Windows、macOS、Linux 三端均支持全量 5 层部署与卸载（Windows 使用 `install.ps1` + `pretool_guard.ps1`，macOS / Linux 使用 `./install.sh` + `pretool_guard.cjs`）。`rules/WINDOWS-RELEASE.md` 属于按需触发（`trigger: model_decision`）的 Windows 交付物专项规则，在 macOS / Linux 常规开发中不会加载。
 2. Hook 默认决策与离线自检边界：
-   - `pretool_guard.ps1` / `pretool_guard.cjs` 对未命中黑名单命令默认返回 `{"decision":"ask"}`，可在 `pretool_guard_settings.json` 中改为 `allow`。`ask` 与 `allow` 在宿主侧的含义随客户端版本而变，本仓库未在各版本上逐一验证（`NOT_PROVEN`）。`verify-hook.py` 仅对脚本本体做标准输入回归测试，安装后请按上文说明在客户端内触发一次受控拦截以确认宿主挂载生效。
+   - `pretool_guard.ps1` / `pretool_guard.cjs` 对未命中黑名单命令默认返回 `{"decision":"ask"}`，可在 `pretool_guard_settings.json` 中改为 `allow`。截至 2026-11-11，Antigravity 在线文档（`antigravity.google/docs/hooks`）列有 6 个返回值（`allow` 交还后续 Hook 或宿主默认策略、`auto_approve` 自动批准、`ask` 请求确认、`force_ask` 忽略缓存每次确认、`deny` 硬拒绝、`deny_unless_prior_grant`），而桌面端 `2.31.0` 内置离线 `hooks.md` 仍停留在旧版 4 值表述；`ask` / `allow` / `force_ask` 在各客户端版本宿主侧的实际弹窗行为未逐一验证（`NOT_PROVEN`）。`verify-hook.py` 仅对脚本本体做标准输入回归测试，安装后请按上文说明在客户端内触发一次受控拦截以确认宿主挂载生效。
    - 黑名单仍是正则。`verify-hook.py` 的 `TIER_CORPUS` 末尾列出了当前**不会**被标记的破坏性命令（`git branch -D`、经变量间接调用的 `rm`、`[IO.Directory]::Delete`、`rsync --delete`、`truncate`、`mv` 到别处、`docker system prune`、以及任何脚本文件内部的删除）。
 3. `read_loop_guard.cjs` 的 `enforce` 拦截模式尚未验证（`NOT_PROVEN`）：
    - `read_loop_guard.cjs` 当前默认保持 `"mode": "observe"`（仅在 `PostToolUse` 记录重复读取诊断，不阻断工具调用）；`read_loop_settings.json` 中的三个 Verified 标志均为 `false`，且 `hooks.json` 中 `read-loop-enforcement` 默认为 `"enabled": false`。

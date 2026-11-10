@@ -11,7 +11,8 @@
  *   DSH_BRIDGE_WORKSPACE  指定 DSH 工作区（默认本进程 cwd，兼容 DSH_CREW_WORKSPACE）
  *   DSH_BRIDGE_DSH_CMD    指定 DSH 启动器；不设则靠桥自动探测
  */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
@@ -139,6 +140,51 @@ try {
   const sessions = await request('tools/call', { name: 'dsh_sessions', arguments: {} }, 30000);
   const sessText = textOf(sessions);
   record('tools/call dsh_sessions', OFFLINE ? sessText.length > 0 : sessText.includes('verify'), sessText.slice(0, 400));
+
+  // 7. register-antigravity.mjs 旧版 dsh-crew 条目迁移与第三方 dsh-crew 保护校验（隔离临时目录）
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-bridge-reg-'));
+  try {
+    const regScript = path.join(HERE, 'register-antigravity.mjs');
+    const cfgLegacy = path.join(tmpDir, 'legacy.json');
+    fs.writeFileSync(cfgLegacy, JSON.stringify({
+      mcpServers: {
+        'dsh-crew': {
+          command: NODE,
+          args: ['/opt/antigravity-agent-rules/mcp/dsh-crew/dsh-crew.mjs', 'mcp'],
+          env: { DSH_CREW_WORKSPACE: '/tmp/ws-legacy' },
+        },
+      },
+    }), 'utf8');
+    const r1 = spawnSync(NODE, [regScript], {
+      env: Object.assign({}, process.env, { AGY_MCP_CONFIG: cfgLegacy, AGY_MCP_BACKUP_DIR: path.join(tmpDir, 'bak1') }),
+      encoding: 'utf8',
+    });
+    const after1 = JSON.parse(fs.readFileSync(cfgLegacy, 'utf8'));
+    const migOk = r1.status === 0 && !after1.mcpServers['dsh-crew'] && !!after1.mcpServers['dsh-bridge']
+      && after1.mcpServers['dsh-bridge'].env?.DSH_BRIDGE_WORKSPACE === '/tmp/ws-legacy';
+    record('register migrates legacy mcp/dsh-crew entry', migOk, JSON.stringify(after1.mcpServers));
+
+    const cfgThirdParty = path.join(tmpDir, 'thirdparty.json');
+    fs.writeFileSync(cfgThirdParty, JSON.stringify({
+      mcpServers: {
+        'dsh-crew': {
+          command: NODE,
+          args: ['/Users/dev/dsh-crew/src/mcp/index.mjs'],
+        },
+      },
+    }), 'utf8');
+    const r2 = spawnSync(NODE, [regScript, '/tmp/ws-new'], {
+      env: Object.assign({}, process.env, { AGY_MCP_CONFIG: cfgThirdParty, AGY_MCP_BACKUP_DIR: path.join(tmpDir, 'bak2') }),
+      encoding: 'utf8',
+    });
+    const after2 = JSON.parse(fs.readFileSync(cfgThirdParty, 'utf8'));
+    const keepOk = r2.status === 0 && !!after2.mcpServers['dsh-crew']
+      && after2.mcpServers['dsh-crew'].args[0] === '/Users/dev/dsh-crew/src/mcp/index.mjs'
+      && !!after2.mcpServers['dsh-bridge'];
+    record('register preserves third-party ZSeven-W/dsh-crew', keepOk, JSON.stringify(after2.mcpServers));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 
   const failed = results.filter((r) => !r.pass);
   console.log('\nSUMMARY: ' + (results.length - failed.length) + '/' + results.length + ' passed');

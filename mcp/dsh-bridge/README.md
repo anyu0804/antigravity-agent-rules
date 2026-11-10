@@ -20,7 +20,7 @@
 
 社区早在 2026 年 8 月就已有开源项目 **[`ZSeven-W/dsh-crew`](https://github.com/ZSeven-W/dsh-crew)**（MIT License，DSH 插件 + 独立 MCP Server，支持异步 worker 池、状态轮询、cwd 咨询锁、多模态与 `node src/install/cli.mjs agy` 一键安装）。
 
-11 月 7 日作者在让 DSH 桌面端 Agent 生成本桥时，口头指令直接说了「把这个 mcp 机制 dsh-crew 接入」，DSH 随即从零写了一个单文件 `dsh --profile headless` 包装脚本（未复制 `ZSeven-W/dsh-crew` 的代码，仅 5 行通用语句重合），但也把脚本和 MCP 注册键命名成了 `dsh-crew`，导致两边都会往 `~/.gemini/config/mcp_config.json` 写 `mcpServers['dsh-crew']` 并互相覆盖。
+11 月 7 日作者在让 DSH 桌面端 Agent 生成本桥时，口头指令直接说了「把这个 mcp 机制 dsh-crew 接入」，DSH 随即从零写了一个单文件 `dsh --profile headless` 包装脚本（未复制 `ZSeven-W/dsh-crew` 的代码；按 2026-11-11 共创者 len 对两边源码去空行与单括号行后的逐行精确交集比对，仅 5 行语言/标准库通用样板语句重合），但也把脚本和 MCP 注册键命名成了 `dsh-crew`，导致两边都会往 `~/.gemini/config/mcp_config.json` 写 `mcpServers['dsh-crew']` 并互相覆盖。
 
 为避免重名混淆与配置覆盖：
 1. 本仓库内置的单文件轻量包装桥自 0.2.0 起重命名为 **`dsh-bridge`**（目录 `mcp/dsh-bridge/`、脚本 `dsh-bridge.mjs`、注册键 `mcpServers['dsh-bridge']`）。
@@ -82,7 +82,7 @@ node verify.mjs --offline
 # 3) 全量验收（会真的跑两轮 DSH，耗 token）
 node verify.mjs
 
-# 4) 注册进 Antigravity（写入 mcpServers['dsh-bridge']，改前自动备份）
+# 4) 注册进 Antigravity（写入 mcpServers['dsh-bridge']，改前自动备份；若检测到旧版指向已删除 mcp/dsh-crew/dsh-crew.mjs 的残留项会自动迁移并清理，不影响第三方 ZSeven-W/dsh-crew）
 node register-antigravity.mjs "D:/my/project"   # 参数可省略
 ```
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.2] - 2026-11-11
+
+- **补齐纯正文创作与前端面板同步场景的思考可见性豁免槽**：
+  - 更新 `global/THINKING-VISIBILITY.md` 与 `global/plugin.json`（`1.3.2`）：在保留常规工程主会话「工具调用前先用 1–2 句说明排查脉络」与后台并行子代理豁免的基础上，新增**纯正文创作与前端面板同步豁免**——当已激活的创作类 Skill（如连载小说写作 `chinese-novelist`）或前端交互 Sidecar 协议明确要求仅输出成稿正文/沉浸式对白时，免除工具调用前的工程分析播报，静默完成状态同步并仅输出目标正文，避免工程态前置说明混入文学成稿或前端交互流；安全、隐私与数据保护红线照常生效。
+  - 同步更新 `README.md` 文件总表中 `global/THINKING-VISIBILITY.md` 的职责说明。
+
 ## [1.3.1] - 2026-11-11
 
 Hook 守卫层（`pretool_guard.ps1` / `pretool_guard.cjs` / `verify-hook.py`）与 `mcp/dsh-bridge` 迁移补全。**默认行为相对 1.3.0 不变**：不加设置文件时，被标记的命令仍然全部返回 `deny`，其余命令仍然返回 `ask`。

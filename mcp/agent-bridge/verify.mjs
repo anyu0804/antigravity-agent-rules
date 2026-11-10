@@ -106,7 +106,7 @@ async function main() {
     const b = startBridge({ BRIDGE_CMD: '' });
     const init = await b.request('initialize', { protocolVersion: '2024-11-05' });
     check('initialize 回显协议版本', init.result?.protocolVersion === '2024-11-05');
-    check('serverInfo 名称正确', init.result?.serverInfo?.name === 'agent-bridge');
+    check('serverInfo 名称正确', init.result?.serverInfo?.name === 'agy-agent-bridge');
 
     const st = await b.request('tools/call', { name: 'agent_status', arguments: {} });
     check('缺 BRIDGE_CMD 时 agent_status 报错', st.result?.isError === true);
@@ -125,6 +125,11 @@ async function main() {
     BRIDGE_CMD: process.execPath,
     BRIDGE_ARGS: JSON.stringify([MOCK, '--session', '{{session}}', '--mode', '{{mode}}']),
     BRIDGE_STATE_DIR: stateDir,
+    BRIDGE_PASS_ENV: 'EXPLICIT_ALLOWED_KEY',
+    FAKE_SECRET_KEY: 'sk-should-not-leak',
+    GITHUB_TOKEN: 'ghp_shouldNotLeak1234567890',
+    UNLISTED_HOST_VAR: 'host-private-value',
+    EXPLICIT_ALLOWED_KEY: 'explicitly-allowed-value',
   });
 
   const init = await b.request('initialize', {
@@ -175,6 +180,8 @@ async function main() {
   check('{{mode}} 已展开', !!answer && answer.argv?.includes('read-only'), JSON.stringify(answer?.argv));
   const firstSessionId = answer?.argv?.[answer.argv.indexOf('--session') + 1];
   check('{{session}} 已展开为 uuid', /^[0-9a-f-]{36}$/.test(firstSessionId || ''), String(firstSessionId));
+  check('子进程默认剥离宿主机敏感 *_KEY/*_TOKEN 与非白名单变量', answer?.hasSecretKey === false && answer?.hasBridgeCmd === false);
+  check('BRIDGE_PASS_ENV 显式声明的变量可透传给子进程', answer?.passedVar === 'explicitly-allowed-value', String(answer?.passedVar));
 
   // 会话复用
   const r2 = await b.request('tools/call', {
@@ -229,9 +236,13 @@ async function main() {
 
   await b.close();
 
-  // 状态文件确实落盘
-  const stateRaw = await fs.readFile(path.join(stateDir, 'sessions.json'), 'utf8').catch(() => '');
+  // 状态文件确实落盘且权限受限
+  const stateFilePath = path.join(stateDir, 'sessions.json');
+  const stateRaw = await fs.readFile(stateFilePath, 'utf8').catch(() => '');
   check('会话状态已落盘', stateRaw.includes('"bad"'), stateRaw.slice(0, 80));
+  const stStat = await fs.stat(stateFilePath).catch(() => null);
+  const modeOk = process.platform === 'win32' ? Boolean(stStat) : (stStat && (stStat.mode & 0o777) === 0o600);
+  check('sessions.json 权限为 0600（Windows 下正常落盘）', modeOk, stStat ? '0o' + (stStat.mode & 0o777).toString(8) : 'missing');
 
   // ---------------------------------------------------------------- 汇总
   const total = pass + failures.length;

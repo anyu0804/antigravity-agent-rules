@@ -1,11 +1,11 @@
 {
-  "name": "agent-bridge",
-  "version": "0.1.0",
+  "name": "agy-agent-bridge",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "零依赖、后端可插拔的 MCP stdio 服务端：把任务派给本机任意 CLI agent 并取回答案",
   "bin": {
-    "agent-bridge": "bridge.mjs"
+    "agy-agent-bridge": "bridge.mjs"
   },
   "engines": {
     "node": ">=20"

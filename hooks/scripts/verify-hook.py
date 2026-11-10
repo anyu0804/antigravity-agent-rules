@@ -45,7 +45,7 @@ CASES = os.path.join(HERE, "test-cases.txt")
 LOG = os.path.join(HERE, "hook_log.jsonl")
 STATE = os.path.join(HERE, "state")
 
-PASS_DECISION = "ask"
+PASS_DECISION = "allow"
 TMP = tempfile.mkdtemp(prefix="agy-hook-selftest-")
 NO_SETTINGS = os.path.join(TMP, "absent.json")
 ENV_KEYS = ("AGY_HOOK_DEFAULT_DECISION", "AGY_HOOK_CONFIRM_DECISION", "AGY_HOOK_LOG_ALL")
@@ -617,11 +617,11 @@ def main():
     print("=" * 78)
     print("SECTION 7  settings file and environment precedence")
     print("=" * 78)
-    check("file: defaultDecision=allow", "npm test", "allow",
-          conversation="s7-a", settings={"defaultDecision": "allow"})
-    check("env beats file (default)", "npm test", "ask",
-          conversation="s7-b", settings={"defaultDecision": "allow"},
-          extra_env={"AGY_HOOK_DEFAULT_DECISION": "ask"})
+    check("file: defaultDecision=ask", "npm test", "ask",
+          conversation="s7-a", settings={"defaultDecision": "ask"})
+    check("env beats file (default)", "npm test", "allow",
+          conversation="s7-b", settings={"defaultDecision": "ask"},
+          extra_env={"AGY_HOOK_DEFAULT_DECISION": "allow"})
     check("file: confirmDecision=force_ask", "rm -r build", "force_ask",
           conversation="s7-c", settings={"confirmDecision": "force_ask"})
     check("block tier ignores confirmDecision", "rm -rf /", "deny",
@@ -629,11 +629,11 @@ def main():
     check("env beats file (confirm)", "rm -r build", "deny",
           conversation="s7-e", settings={"confirmDecision": "force_ask"},
           extra_env={"AGY_HOOK_CONFIRM_DECISION": "deny"})
-    check("broken file -> strict default (pass)", "npm test", "ask",
+    check("broken file -> strict default (pass)", "npm test", "allow",
           conversation="s7-f", settings="{ not json")
     check("broken file -> strict default (confirm)", "rm -r build", "deny",
           conversation="s7-g", settings="{ not json")
-    check("unknown values ignored (pass)", "npm test", "ask",
+    check("unknown values ignored (pass)", "npm test", "allow",
           conversation="s7-h", settings={"defaultDecision": "auto_approve", "confirmDecision": "allow"})
     check("confirm tier can never become allow", "rm -r build", "deny",
           conversation="s7-i", settings={"defaultDecision": "auto_approve", "confirmDecision": "allow"})

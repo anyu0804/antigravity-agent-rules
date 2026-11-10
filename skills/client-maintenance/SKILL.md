@@ -5,7 +5,7 @@ description: 当用户要求清理反重力（Antigravity）缓存、维护客�
 
 # Antigravity 客户端数据维护与历史归档规范（client-maintenance）
 
-> 权威来源：红线与资产边界以当前工作区根目录的 `AGENTS.md` 与 [`~/.gemini/config/plugins/anyi-global-rules/rules/AGENTS.md`](../../../config/plugins/anyi-global-rules/rules/AGENTS.md) 为准。本技能承载客户端数据目录（`~/.gemini/antigravity`）的详细维护、归档与缓存清理规程。
+> 权威来源：红线与资产边界以当前工作区根目录的 `AGENTS.md` 与 [`~/.gemini/config/plugins/antigravity-core-rules/rules/AGENTS.md`](../../../config/plugins/antigravity-core-rules/rules/AGENTS.md) 为准。本技能承载客户端数据目录（`~/.gemini/antigravity`）的详细维护、归档与缓存清理规程。
 
 ## 1. 核心安全纪律（不可逾越）
 

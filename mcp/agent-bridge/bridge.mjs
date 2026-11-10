@@ -23,8 +23,8 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const NAME = 'agent-bridge';
-const VERSION = '0.1.0';
+const NAME = 'agy-agent-bridge';
+const VERSION = '0.2.0';
 const PROTOCOL_FALLBACK = '2024-11-05';
 
 const ENV = process.env;
@@ -36,6 +36,48 @@ const MAX_OUTPUT_BYTES = Number(ENV.BRIDGE_MAX_OUTPUT_BYTES || 8 * 1024 * 1024);
 const ANSWER_TAIL_LINES = Number(ENV.BRIDGE_ANSWER_TAIL_LINES || 80);
 
 const MODES = new Set(['read-only', 'workspace-write', 'full-access']);
+
+/**
+ * 子进程环境变量最小白名单：只保留基础系统路径、区域与代理变量，
+ * 默认剥离宿主机所有 *_KEY / *_TOKEN / *_SECRET / *_PASSWORD 等凭据与无关变量。
+ * 如后端 CLI 确需特定环境变量，可通过 BRIDGE_PASS_ENV="VAR1,VAR2" 显式放行。
+ */
+const SAFE_ENV_KEYS = new Set([
+  'PATH', 'Path', 'PATHEXT',
+  'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH',
+  'APPDATA', 'LOCALAPPDATA', 'PROGRAMDATA', 'PROGRAMFILES', 'ProgramFiles', 'ProgramFiles(x86)', 'CommonProgramFiles',
+  'SystemRoot', 'SYSTEMROOT', 'SystemDrive', 'SYSTEMDRIVE', 'WINDIR', 'windir', 'COMSPEC', 'ComSpec',
+  'TMP', 'TEMP', 'TMPDIR',
+  'SHELL', 'USER', 'LOGNAME', 'USERNAME',
+  'LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'COLORTERM', 'NO_COLOR', 'FORCE_COLOR',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+  'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS',
+  'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR',
+]);
+const SENSITIVE_NAME_RE = /(?:^|_)(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|CREDENTIALS|AUTH|COOKIE|PAT|PRIVATE|SESSION_TOKEN)(?:$|_)/i;
+
+function buildChildEnv() {
+  const passList = new Set(
+    String(ENV.BRIDGE_PASS_ENV || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  const out = {};
+  for (const [k, v] of Object.entries(ENV)) {
+    if (v === undefined) continue;
+    if (passList.has(k)) {
+      out[k] = v;
+      continue;
+    }
+    if (/^BRIDGE_/i.test(k)) continue;
+    if (SENSITIVE_NAME_RE.test(k)) continue;
+    if (SAFE_ENV_KEYS.has(k)) {
+      out[k] = v;
+    }
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------- 输出
 
@@ -71,10 +113,12 @@ async function loadState() {
 }
 
 async function saveState(state) {
-  await fs.mkdir(STATE_DIR, { recursive: true });
+  await fs.mkdir(STATE_DIR, { recursive: true, mode: 0o700 });
   const tmp = STATE_FILE + '.tmp';
-  await fs.writeFile(tmp, JSON.stringify(state, null, 2), 'utf8');
+  await fs.writeFile(tmp, JSON.stringify(state, null, 2), { encoding: 'utf8', mode: 0o600 });
+  await fs.chmod(tmp, 0o600).catch(() => {});
   await fs.rename(tmp, STATE_FILE);
+  await fs.chmod(STATE_FILE, 0o600).catch(() => {});
 }
 
 // ---------------------------------------------------------------- 后端
@@ -190,7 +234,7 @@ function runBackend({ cmd, args, task, cwd, timeoutMs }) {
         cwd,
         shell: useShell,
         windowsHide: true,
-        env: process.env,
+        env: buildChildEnv(),
         stdio: ['pipe', 'pipe', 'pipe'],
       });
     } catch (e) {

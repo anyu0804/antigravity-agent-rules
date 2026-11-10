@@ -7,7 +7,7 @@ metadata:
 
 # 中文小说创作
 
-> **上游致谢与引用声明**：本 Skill 基于开源项目 [PenglongHuang/chinese-novelist-skill](https://github.com/PenglongHuang/chinese-novelist-skill)（作者：`PenglongHuang`，[MIT License](./LICENSE)）构建；本文件为适配 Antigravity 全局规则与 `BidiGenerateContent` 流式工具调用特性的衔接入口，完整阶段流程（`references/`）与字数统计脚本（`scripts/`）归属原项目，获取方式见 [`UPSTREAM.md`](./UPSTREAM.md)。
+> **上游致谢与精简包说明**：本 Skill 基于开源项目 [PenglongHuang/chinese-novelist-skill](https://github.com/PenglongHuang/chinese-novelist-skill)（作者：`PenglongHuang`，[MIT License](https://github.com/PenglongHuang/chinese-novelist-skill/blob/master/LICENSE)）构建；本文件为适配 Antigravity 全局规则与 `BidiGenerateContent` 流式工具调用特性的衔接入口。**本精简包仅含本 `SKILL.md` 规则壳，不含 `references/` 与 `scripts/` 子文件——除非用户已按 [`UPSTREAM.md`](https://github.com/anyu0804/antigravity-agent-rules/blob/main/skills/chinese-novelist/UPSTREAM.md) 将上游完整目录拉取到本机，否则请直接按本文件内嵌的各阶段规则执行，切勿调用文件读取工具（`read_file` / `view_file`）在本地查找 `references/...` 或 `scripts/...`，以免触发 `ENOENT` 空耗轮次。**
 
 ## 写作原则
 
@@ -27,12 +27,12 @@ metadata:
 
 ## 流程
 
-进入每个阶段前，先读对应的流程文档。
+以下各阶段直接按本节说明执行（下方链接均指向原上游 GitHub 仓库网页供人工参考；**本精简包不含本地 `references/flows/` 子文件，请勿调用读取工具查找本地相对路径**）。
 
 ### 0 初始化
 
 读取用户偏好。工作区已有未完成项目（`02-写作计划.json` 里还有未完成章节）时，报告当前进度并从断点续写。不输出欢迎语。
-→ [phase0-initialization.md](references/flows/phase0-initialization.md)
+→ 上游参考：[phase0-initialization.md](https://github.com/PenglongHuang/chinese-novelist-skill/blob/master/references/flows/phase0-initialization.md)
 
 ### 1 立项问答
 
@@ -40,29 +40,29 @@ metadata:
 - Q4–Q8（世界观、视角与基调、主题、目标读者、章数与每章字数）一次列出，每项附推荐默认值，用户回“默认”即可。
 - 标题：给 3–5 个候选，用户选择或自拟。
 
-→ [phase1-layer1-core.md](references/flows/phase1-layer1-core.md) / [phase1-layer2-customize.md](references/flows/phase1-layer2-customize.md) / [phase1-layer3-title.md](references/flows/phase1-layer3-title.md)
+→ 上游参考：[phase1-layer1-core.md](https://github.com/PenglongHuang/chinese-novelist-skill/blob/master/references/flows/phase1-layer1-core.md) / [phase1-layer2-customize.md](https://github.com/PenglongHuang/chinese-novelist-skill/blob/master/references/flows/phase1-layer2-customize.md) / [phase1-layer3-title.md](https://github.com/PenglongHuang/chinese-novelist-skill/blob/master/references/flows/phase1-layer3-title.md)
 
 ### 2 规划与确认
 
 生成 `01-大纲.md`、人物档案、`02-写作计划.json`，以及空的 `03-连续性记录.md`。一次确认以下内容：大纲、章数与字数、写作模式、是否允许自动重写不合格章节。确认后不再提问。
-→ [phase2-planning.md](references/flows/phase2-planning.md)
+→ 上游参考：[phase2-planning.md](https://github.com/PenglongHuang/chinese-novelist-skill/blob/master/references/flows/phase2-planning.md)
 
 ### 3 写作
 
 - 模式：默认 `serial`，主 Agent 逐章写。`parallel` 只在运行环境能派生写作子代理时可选。
 - 每章流程：读本章大纲、`03-连续性记录.md` 和上一章结尾约 500 字 → **按场景分 2–4 段调用 `write_file`（首段新建、后续 `Append: true`；Argon 单次 ≤ 2,000 字，Carbon 单次 ≤ 1,500 字）完成本章写作** → 字数检查 → 去 AI 味自检 → 更新 `02-写作计划.json` 中的章节状态 → 在 `03-连续性记录.md` 追加本章摘要（≤150 字）、新埋的伏笔、已回收的伏笔和人物状态变化。
 
-→ [phase3-writing.md](references/flows/phase3-writing.md)
+→ 上游参考：[phase3-writing.md](https://github.com/PenglongHuang/chinese-novelist-skill/blob/master/references/flows/phase3-writing.md)
 
 ### 4 全书校验
 
-- 字数用共享机制里的检查脚本统计，与目标偏差在 ±10% 以内为合格。
+- 字数统计与目标偏差在 ±10% 以内为合格（若未拉取上游 `scripts/check_chapter_wordcount.py`，直接读取章节文件统计字符数）。
 - 字数不合格时，先在原章内扩写或删减。违背大纲或与连续性记录冲突时才整章重写。每章最多 3 轮。
 - 结局：全部合格报 `PASS`；仍有不合格章节报 `FAIL`，列出章号和原因。
 
-→ [phase4-validation.md](references/flows/phase4-validation.md)
+→ 上游参考：[phase4-validation.md](https://github.com/PenglongHuang/chinese-novelist-skill/blob/master/references/flows/phase4-validation.md)
 
 ## 共享机制
 
 偏好系统、写作计划 JSON 结构、字数检查脚本。
-→ [shared-infrastructure.md](references/flows/shared-infrastructure.md)
+→ 上游参考：[shared-infrastructure.md](https://github.com/PenglongHuang/chinese-novelist-skill/blob/master/references/flows/shared-infrastructure.md)

@@ -1,11 +1,11 @@
 ---
 name: multi-agent-orchestrator
-description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /teamwork）多代理并行协作、默认派 3.8f（model: flash）子代理干脏活/只读验证、大型代码库跨模块检索、需要保持主对话上下文干净、需要利用独立工作区（branch/share）做无污染实验、或需要通过 MCP 桥遥控外部客户端 Agent（如 dsh-bridge / agent-bridge / dsh-crew / tianshu）时使用。指导何时及如何委派 flash-verifier、research、项目级验证子代理、自建 subagent 以及外部 MCP。
+description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /teamwork）多代理并行协作、默认派 3.8f（model: flash）子代理干脏活/只读验证、大型代码库跨模块检索、需要保持主对话上下文干净、需要利用独立工作区（branch/share）做无污染实验、或需要通过 MCP 桥遥控外部客户端 Agent（如 dsh-bridge / agy-agent-bridge / dsh-crew / tianshu）时使用。指导何时及如何委派 flash-verifier、research、项目级验证子代理、自建 subagent 以及外部 MCP。
 ---
 
 # 多 Agent 委派与跨端协同规范（multi-agent-orchestrator）
 
-> 权威来源：遵守 [`~/.gemini/config/plugins/anyi-global-rules/rules/AGENTS.md`](../../rules/AGENTS.md) 边界与 [`BACKGROUND-RESOURCES.md`](../../rules/BACKGROUND-RESOURCES.md) 后台资源管理纪律。
+> 权威来源：遵守 [`~/.gemini/config/plugins/antigravity-core-rules/rules/AGENTS.md`](../../rules/AGENTS.md) 边界与 [`BACKGROUND-RESOURCES.md`](../../rules/BACKGROUND-RESOURCES.md) 后台资源管理纪律。
 
 ## 1. 核心目标：保护主会话上下文与注意力
 
@@ -15,7 +15,7 @@ description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /te
 2. **广度代码/文档检索**（跨多个目录搜寻调用链、查找历史实现、盘点多文件结构）→ 委派给内置只读 `research` subagent（可指定 `Model: "flash"`）。
 3. **无污染隔离实验**（尝试高风险重构或对比不同实现方案，不希望弄脏当前工作树）→ 使用 `Workspace: "share"` 或 `"branch"` 启动 `self` subagent。
 4. **跨客户端外部 Agent 遥控（MCP）**：
-   - **遥控无头 CLI Agent（如 `dsh-bridge` / `agent-bridge` / `dsh-crew`）**：需复用当前工作区工具链、让无头 Agent 跑长文本/批处理/脚本验证或无 UI 后台任务时使用。
+   - **遥控无头 CLI Agent（如 `dsh-bridge` / `agy-agent-bridge` / `dsh-crew`）**：需复用当前工作区工具链、让无头 Agent 跑长文本/批处理/脚本验证或无 UI 后台任务时使用。
    - **遥控桌面端 GUI Agent（如 `tianshu`）**：需将独立功能模块交给外部桌面 Agent 开发并执行 Git 基线客观验收 + 自动返修闭环时使用。
 
 ---
@@ -77,11 +77,11 @@ description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /te
 | 类别 | 可选方案 | 核心工具 | 验证状态与适用场景 |
 | :--- | :--- | :--- | :--- |
 | **本仓库内置 DSH 轻量桥** | [`mcp/dsh-bridge`](../../mcp/dsh-bridge/)（注册名 `dsh-bridge`） | `dsh_status` / `dsh_sessions` / `dsh_ask` / `dsh_forget` | **真机跑通 6/6**（含续聊复用 session）。零依赖单文件，绑定 `dsh --profile headless`，默认 `read-only` 权限。 |
-| **本仓库内置通用 CLI 桥** | [`mcp/agent-bridge`](../../mcp/agent-bridge/)（注册名 `agent-bridge`） | `agent_status` / `agent_sessions` / `agent_ask` / `agent_forget` | 假后端 **32/32** 协议断言，**未接真实后端**（`NOT_PROVEN`）。后端由 `BRIDGE_CMD` 指定。 |
+| **本仓库内置通用 CLI 桥** | [`mcp/agent-bridge`](../../mcp/agent-bridge/)（注册名 `agy-agent-bridge`） | `agent_status` / `agent_sessions` / `agent_ask` / `agent_forget` | 假后端 **35/35** 协议断言，**未接真实后端**（`NOT_PROVEN`）。后端由 `BRIDGE_CMD` 指定，子进程环境变量白名单隔离。 |
 | **社区成熟异步多 Worker 桥** | [`ZSeven-W/dsh-crew`](https://github.com/ZSeven-W/dsh-crew)（MIT，注册名 `dsh-crew`） | 异步 spawn、worker 状态轮询、cwd 咨询锁、多模态 | 第三方开源项目（需独立安装 `node src/install/cli.mjs agy`）。 |
 | **社区桌面 GUI Agent 验收桥** | [`lanlan0811/tianshu-mcp`](https://github.com/lanlan0811/tianshu-mcp)（Apache-2.0，注册名 `tianshu`） | `query_info` / `run_task` / `wait_task` / `query_task` / `manage_task` / `verify_task` | 第三方开源项目（Electron CDP 驱动外部 GUI Agent + Git 基线客观验收闭环）。 |
 
-### 4.1 无头 CLI 桥（`dsh-bridge` / `agent-bridge`）操作纪律
+### 4.1 无头 CLI 桥（`dsh-bridge` / `agy-agent-bridge`）操作纪律
 1. **最小权限原则**：`dsh-bridge` 默认权限已设为 `"read-only"`；仅在用户明确授权修改工作区文件时显式传 `permission: "workspace-write"`；跨目录授权施工才传 `"danger-full-access"`，且 `approval_policy` 默认保持 `"never"`。
 2. **会话标签卫生**：按任务语义命名 `session` 标签（以便多轮续聊同一上下文）；一次性探针或临时任务结束后，主动调用 `forget(session)` 清理映射。
 3. **遵守目标工程红线**：派给外部 Agent 的任务必须遵守当前工作区根目录的 `AGENTS.md`（严禁裸改生产红线配置、严禁触碰用户代理与网络配置）。

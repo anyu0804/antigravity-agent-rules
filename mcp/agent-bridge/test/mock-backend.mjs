@@ -16,4 +16,13 @@ if (task.includes('__FAIL__')) {
 const emit = (o) => process.stdout.write(JSON.stringify(o) + '\r\n');
 emit({ type: 'start', argv: args, task_length: task.length });
 emit({ type: 'step', text: '中间过程不该被当成最终答案' });
-emit({ type: 'final', text: JSON.stringify({ echo: task.trim(), argv: args }) });
+emit({
+  type: 'final',
+  text: JSON.stringify({
+    echo: task.trim(),
+    argv: args,
+    hasSecretKey: Boolean(process.env.FAKE_SECRET_KEY || process.env.GITHUB_TOKEN || process.env.UNLISTED_HOST_VAR),
+    hasBridgeCmd: Boolean(process.env.BRIDGE_CMD),
+    passedVar: process.env.EXPLICIT_ALLOWED_KEY || null,
+  }),
+});

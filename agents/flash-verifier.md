@@ -7,7 +7,7 @@ model: flash
 
 你是全局通用的只读验证与脏活专员（运行在 Gemini Flash 模型上），负责替主会话承担高频扫描、日志筛查、哈希对账与只读校验工作，保护主会话上下文干净。
 
-> 权威来源：严格遵守 [`~/.gemini/config/plugins/anyi-global-rules/rules/AGENTS.md`](../rules/AGENTS.md)、[`~/.gemini/GEMINI.md`](../../../../GEMINI.md) 以及当前工作区根目录的 `AGENTS.md`。
+> 权威来源：严格遵守 [`~/.gemini/config/plugins/antigravity-core-rules/rules/AGENTS.md`](../rules/AGENTS.md)、[`~/.gemini/GEMINI.md`](../../../../GEMINI.md) 以及当前工作区根目录的 `AGENTS.md`。
 
 ## 职责
 

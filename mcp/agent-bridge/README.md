@@ -1,6 +1,6 @@
-# agent-bridge
+# agy-agent-bridge（目录 `mcp/agent-bridge`）
 
-零依赖、**后端可插拔**的 MCP stdio 服务端。让任意 MCP 宿主（Antigravity、Claude Code、Codex、Grok……）把子任务派给本机任意「一次性任务的 CLI agent」，并取回最终答案。
+零依赖、**后端可插拔**的 MCP stdio 服务端（注册键名 `agy-agent-bridge`，避免与社区 `@paulmh/agentbridge-mcp`、`raysonmeng/agent-bridge`、`EthanSK/agent-bridge` 等同名项目冲突）。让任意 MCP 宿主（Antigravity、Claude Code、Codex、Grok……）把子任务派给本机任意「一次性任务的 CLI agent」，并取回最终答案。
 
 约 500 行、只用 Node 内建模块、不装任何依赖。**本目录不含任何第三方项目的代码**，只依赖公开的 MCP 协议（JSON-RPC 2.0 over stdio）和一条约定：后端把任务从 stdin 读进去，把事件从 stdout 按行吐出来。
 
@@ -12,7 +12,7 @@
 |---|---|
 | 编写 | 2026-11-09，由作者使用的编码 Agent 按需求新写，不是从别的仓库拷来的 |
 | 版权 | 作者原创实现，随仓库根 [MIT License](../../LICENSE) 发布 |
-| 验证状态 | `verify.mjs` 用假后端跑 **32 项协议断言，32/32 通过**，不联网、不需要真 CLI；**尚未接入任何真实后端跑通端到端（`NOT_PROVEN`）** |
+| 验证状态 | `verify.mjs` 用假后端跑 **35 项协议与安全断言，35/35 通过**（含子进程敏感环境变量隔离、`BRIDGE_PASS_ENV` 显式透传与 `sessions.json` `0600` 权限检查），不联网、不需要真 CLI；**尚未接入任何真实后端跑通端到端（`NOT_PROVEN`）** |
 | 姊妹实现 | 同仓库 [`../dsh-bridge`](../dsh-bridge)（原目录名 `dsh-crew`，自 0.2.0 起改名为 `dsh-bridge` 以免与社区 [`ZSeven-W/dsh-crew`](https://github.com/ZSeven-W/dsh-crew) 重名）：DSH Headless 专用，**已在真机跑通 6/6** |
 
 一句话取舍：
@@ -43,7 +43,7 @@
 ```bash
 # 自检（用假后端，不联网、不需要真 CLI）
 node mcp/agent-bridge/verify.mjs
-# => TOTAL 32 / PASS 32 / FAIL 0
+# => TOTAL 35 / PASS 35 / FAIL 0
 ```
 
 自检全绿说明协议层没问题，剩下只需要把你的后端命令填进环境变量。
@@ -57,8 +57,9 @@ node mcp/agent-bridge/verify.mjs
 | `BRIDGE_CMD` | ✅ | 后端可执行文件。`.exe` 直接传参；`.cmd`/`.bat` 在 Windows 上自动经 shell。 |
 | `BRIDGE_ARGS` | | JSON 字符串数组，参数模板。支持四个占位符：`{{session}}` `{{mode}}` `{{cwd}}` `{{task}}`。缺省为 `[]`。 |
 | `BRIDGE_CWD` | | 后端默认工作目录，缺省为桥自己的 `process.cwd()`。**建议显式设置**，否则取决于宿主从哪里拉起桥。 |
+| `BRIDGE_PASS_ENV` | | 逗号分隔的环境变量白名单（如 `"OPENAI_API_KEY,ANTHROPIC_API_KEY"`）。子进程默认仅继承系统基础路径与代理变量，**自动剥离宿主机所有 `*_KEY` / `*_TOKEN` / `*_SECRET` / `*_PASSWORD` 等敏感凭据**；后端 CLI 确需特定密钥时在此显式列出。 |
 | `BRIDGE_TIMEOUT_MS` | | 单次调用超时，缺省 `900000`（15 分钟）。超时 SIGKILL 并回传 `[TIMEOUT]`。 |
-| `BRIDGE_STATE_DIR` | | 会话映射文件目录，缺省 `./state`（可放在任何可写位置）。 |
+| `BRIDGE_STATE_DIR` | | 会话映射文件目录，缺省 `./state`（目录权限 `0700`，`sessions.json` 权限 `0600`）。 |
 | `BRIDGE_MAX_OUTPUT_BYTES` | | stdout 累计上限，缺省 8 MB，超出后截断。 |
 | `BRIDGE_ANSWER_TAIL_LINES` | | 认不出结构化事件时，退化为取 stdout 尾部多少行，缺省 80。 |
 
@@ -68,12 +69,12 @@ node mcp/agent-bridge/verify.mjs
 
 ## 注册到 Antigravity
 
-写进 `~/.gemini/config/mcp_config.json`（改完重启客户端或新开对话）：
+写进 `~/.gemini/config/mcp_config.json`（改完重启客户端或新开对话；使用 `agy-agent-bridge` 键名以免与社区同名桥冲突）：
 
 ```json
 {
   "mcpServers": {
-    "agent-bridge": {
+    "agy-agent-bridge": {
       "command": "node",
       "args": ["<仓库绝对路径>/mcp/agent-bridge/bridge.mjs"],
       "env": {

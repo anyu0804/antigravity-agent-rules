@@ -38,14 +38,16 @@ const REPO_HOOKS = path.join(REPO_ROOT, 'hooks', 'hooks.json');
 const REPO_SCRIPTS = path.join(REPO_ROOT, 'hooks', 'scripts');
 const REPO_GEMINI = path.join(REPO_ROOT, 'global', 'GEMINI.md');
 const HOOK_TOP_KEYS = ['hard-gate', 'read-loop-efficiency', 'read-loop-enforcement'];
+const MANAGED_MARKER = '.antigravity-rules-managed';
+const LEGACY_PLUGIN_NAME = 'anyi-global-rules';
 const PLUGIN_NAMES = [
-  'anyi-global-rules',
+  'antigravity-core-rules',
   'search-routing',
   'docx-delivery',
   'lieflat-less-ai-tone',
   'humanizer-zh',
 ];
-const ANYI_RULE_FILES = [
+const CORE_RULE_FILES = [
   'BACKGROUND-RESOURCES.md',
   'IMPLEMENTATION.md',
   'LONG-TASKS.md',
@@ -53,8 +55,22 @@ const ANYI_RULE_FILES = [
   'RULE-MAINTENANCE.md',
   'WINDOWS-RELEASE.md',
 ];
-const ANYI_SKILLS = ['task-intake', 'safe-network-diagnostics', 'multi-agent-orchestrator'];
+const CORE_SKILLS = ['task-intake', 'safe-network-diagnostics', 'multi-agent-orchestrator'];
 const STANDALONE_SKILLS = ['client-maintenance', 'chinese-novelist'];
+
+function isManagedDir(dirPath) {
+  if (!fs.existsSync(dirPath)) return true;
+  return fs.existsSync(path.join(dirPath, MANAGED_MARKER));
+}
+
+function writeManagedMarker(dirPath) {
+  fs.mkdirSync(dirPath, { recursive: true });
+  fs.writeFileSync(
+    path.join(dirPath, MANAGED_MARKER),
+    'Managed by antigravity-agent-rules. Do not remove this file if you want install/uninstall scripts to manage this directory.\n',
+    'utf8',
+  );
+}
 
 // install.sh passes the Node path it found on PATH (e.g. /opt/homebrew/bin/node). Prefer it over
 // process.execPath, which under Homebrew is a versioned Cellar path that breaks on `brew upgrade`.
@@ -143,22 +159,22 @@ function getManagedTargets(hookOnly) {
     .filter((f) => fs.statSync(path.join(REPO_SCRIPTS, f)).isFile())
     .sort();
   const hookTargets = [
-    { rel: 'config/hooks.json', mode: 'MERGE (top-level keys)' },
-    ...scripts.map((f) => ({ rel: 'config/scripts/' + f, mode: 'OVERWRITE' })),
+    { rel: 'config/hooks.json', mode: 'MERGE (top-level keys)', isDir: false },
+    ...scripts.map((f) => ({ rel: 'config/scripts/' + f, mode: 'OVERWRITE', isDir: false })),
   ];
   if (hookOnly) return hookTargets;
   return [
-    { rel: 'GEMINI.md', mode: 'MERGE (marker block)' },
+    { rel: 'GEMINI.md', mode: 'MERGE (marker block)', isDir: false },
     hookTargets[0],
-    { rel: 'config/config.json', mode: 'MERGE (enable 5 plugins)' },
+    { rel: 'config/config.json', mode: 'MERGE (enable 5 plugins)', isDir: false },
     ...hookTargets.slice(1),
-    { rel: 'config/plugins/anyi-global-rules', mode: 'OVERWRITE' },
-    { rel: 'config/plugins/search-routing', mode: 'OVERWRITE' },
-    { rel: 'config/plugins/docx-delivery', mode: 'OVERWRITE' },
-    { rel: 'config/plugins/lieflat-less-ai-tone', mode: 'OVERWRITE' },
-    { rel: 'config/plugins/humanizer-zh', mode: 'OVERWRITE' },
-    { rel: 'antigravity/skills/client-maintenance', mode: 'OVERWRITE' },
-    { rel: 'antigravity/skills/chinese-novelist', mode: 'OVERWRITE' },
+    { rel: 'config/plugins/antigravity-core-rules', mode: 'OVERWRITE (managed)', isDir: true },
+    { rel: 'config/plugins/search-routing', mode: 'OVERWRITE (managed)', isDir: true },
+    { rel: 'config/plugins/docx-delivery', mode: 'OVERWRITE (managed)', isDir: true },
+    { rel: 'config/plugins/lieflat-less-ai-tone', mode: 'OVERWRITE (managed)', isDir: true },
+    { rel: 'config/plugins/humanizer-zh', mode: 'OVERWRITE (managed)', isDir: true },
+    { rel: 'antigravity/skills/client-maintenance', mode: 'OVERWRITE (managed)', isDir: true },
+    { rel: 'antigravity/skills/chinese-novelist', mode: 'OVERWRITE (managed)', isDir: true },
   ];
 }
 
@@ -255,7 +271,24 @@ async function install(opts) {
   if (!repoHooks) fail('repo hooks/hooks.json is missing or empty.');
 
   const managed = getManagedTargets(opts.hookOnly);
-  const existing = managed.filter((item) => fs.existsSync(path.join(P.gemini, item.rel)));
+  const existing = [];
+  const skippedUnmanaged = [];
+  for (const item of managed) {
+    const full = path.join(P.gemini, item.rel);
+    if (fs.existsSync(full)) {
+      if (item.isDir && item.rel !== 'config/plugins/antigravity-core-rules' && !isManagedDir(full)) {
+        skippedUnmanaged.push({ rel: item.rel, full, mode: 'SKIP (unmanaged)' });
+      } else {
+        existing.push(item);
+      }
+    }
+  }
+  const legacyAnyiRel = 'config/plugins/' + LEGACY_PLUGIN_NAME;
+  const legacyAnyiFull = path.join(P.gemini, legacyAnyiRel);
+  if (!opts.hookOnly && fs.existsSync(legacyAnyiFull)) {
+    existing.push({ rel: legacyAnyiRel, mode: 'MIGRATE -> config/plugins/antigravity-core-rules', isDir: true });
+  }
+
   console.log('');
   if (existing.length) {
     console.log(`The following existing files/directories in '${P.gemini}' will be modified:`);
@@ -264,6 +297,13 @@ async function install(opts) {
     }
   } else {
     console.log(`No existing target files found in '${P.gemini}' (clean install).`);
+  }
+  if (skippedUnmanaged.length) {
+    console.log('');
+    console.log(`The following existing directories do NOT have '${MANAGED_MARKER}' and will be SKIPPED (preserving user/upstream files):`);
+    for (const sk of skippedUnmanaged) {
+      console.log(`  [${sk.mode}] ${sk.full}`);
+    }
   }
   console.log('');
   if (!(await confirm('Proceed with installation?', opts.force))) {
@@ -287,6 +327,7 @@ async function install(opts) {
     mode: opts.hookOnly ? 'hook-only' : 'full',
     platform: process.platform,
     preExisting: existing.map((x) => x.rel),
+    skippedUnmanaged: skippedUnmanaged.map((x) => x.rel),
   };
   fs.writeFileSync(path.join(backupDir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
   console.log(`[1/5] Created backup snapshot (${existing.length} pre-existing item(s)): ${backupDir}`);
@@ -332,113 +373,135 @@ async function install(opts) {
     }
     fs.writeFileSync(P.geminiMd, finalGemini, 'utf8');
 
-    const anyiPluginDir = path.join(P.plugins, 'anyi-global-rules');
+    const corePluginDir = path.join(P.plugins, 'antigravity-core-rules');
     copyWithPlaceholderReplacement(
       path.join(REPO_ROOT, 'global', 'plugin.json'),
-      path.join(anyiPluginDir, 'plugin.json'),
+      path.join(corePluginDir, 'plugin.json'),
       forwardHome,
       forwardWs,
     );
     copyWithPlaceholderReplacement(
       path.join(REPO_ROOT, 'global', 'AGENTS.md'),
-      path.join(anyiPluginDir, 'rules', 'AGENTS.md'),
+      path.join(corePluginDir, 'rules', 'AGENTS.md'),
       forwardHome,
       forwardWs,
     );
     copyWithPlaceholderReplacement(
       path.join(REPO_ROOT, 'global', 'THINKING-VISIBILITY.md'),
-      path.join(anyiPluginDir, 'rules', 'THINKING-VISIBILITY.md'),
+      path.join(corePluginDir, 'rules', 'THINKING-VISIBILITY.md'),
       forwardHome,
       forwardWs,
     );
-    for (const rf of ANYI_RULE_FILES) {
+    for (const rf of CORE_RULE_FILES) {
       copyWithPlaceholderReplacement(
         path.join(REPO_ROOT, 'rules', rf),
-        path.join(anyiPluginDir, 'rules', rf),
+        path.join(corePluginDir, 'rules', rf),
         forwardHome,
         forwardWs,
       );
     }
+    writeManagedMarker(corePluginDir);
+    if (fs.existsSync(legacyAnyiFull)) {
+      fs.rmSync(legacyAnyiFull, { recursive: true, force: true });
+      console.log(`  [MIGRATED] Removed legacy plugin directory '${legacyAnyiFull}' -> '${corePluginDir}'`);
+    }
 
     const searchPluginDir = path.join(P.plugins, 'search-routing');
-    copyWithPlaceholderReplacement(
-      path.join(REPO_ROOT, 'rules', 'search-routing.plugin.json'),
-      path.join(searchPluginDir, 'plugin.json'),
-      forwardHome,
-      forwardWs,
-    );
-    copyWithPlaceholderReplacement(
-      path.join(REPO_ROOT, 'rules', 'SEARCH-ROUTING.md'),
-      path.join(searchPluginDir, 'rules', 'SEARCH-ROUTING.md'),
-      forwardHome,
-      forwardWs,
-    );
+    const searchPluginManaged = isManagedDir(searchPluginDir);
+    if (searchPluginManaged) {
+      copyWithPlaceholderReplacement(
+        path.join(REPO_ROOT, 'rules', 'search-routing.plugin.json'),
+        path.join(searchPluginDir, 'plugin.json'),
+        forwardHome,
+        forwardWs,
+      );
+      copyWithPlaceholderReplacement(
+        path.join(REPO_ROOT, 'rules', 'SEARCH-ROUTING.md'),
+        path.join(searchPluginDir, 'rules', 'SEARCH-ROUTING.md'),
+        forwardHome,
+        forwardWs,
+      );
+      writeManagedMarker(searchPluginDir);
+    } else {
+      console.log('  [SKIP (unmanaged)] ' + searchPluginDir);
+    }
     console.log('[3/5] Merged GEMINI.md & deployed Layer 2 (global/) + Layer 3 (rules/).');
 
     // 4. Deploy Layer 4 & 5: skills/, agents/, and tone/
-    for (const sk of ANYI_SKILLS) {
+    for (const sk of CORE_SKILLS) {
       copyTreeWithReplacement(
         path.join(REPO_ROOT, 'skills', sk),
-        path.join(anyiPluginDir, 'skills', sk),
+        path.join(corePluginDir, 'skills', sk),
         forwardHome,
         forwardWs,
       );
     }
     copyWithPlaceholderReplacement(
       path.join(REPO_ROOT, 'agents', 'flash-verifier.md'),
-      path.join(anyiPluginDir, 'agents', 'flash-verifier.md'),
+      path.join(corePluginDir, 'agents', 'flash-verifier.md'),
       forwardHome,
       forwardWs,
     );
-    copyTreeWithReplacement(
-      path.join(REPO_ROOT, 'skills', 'research-routing'),
-      path.join(searchPluginDir, 'skills', 'research-routing'),
-      forwardHome,
-      forwardWs,
-    );
-    copyTreeWithReplacement(
-      path.join(REPO_ROOT, 'skills', 'docx-delivery'),
-      path.join(P.plugins, 'docx-delivery'),
-      forwardHome,
-      forwardWs,
-    );
-    copyTreeWithReplacement(
-      path.join(REPO_ROOT, 'tone', 'lieflat-less-ai-tone'),
-      path.join(P.plugins, 'lieflat-less-ai-tone'),
-      forwardHome,
-      forwardWs,
-    );
-    copyTreeWithReplacement(
-      path.join(REPO_ROOT, 'tone', 'humanizer-zh'),
-      path.join(P.plugins, 'humanizer-zh'),
-      forwardHome,
-      forwardWs,
-    );
-
-    for (const ssk of STANDALONE_SKILLS) {
+    if (searchPluginManaged) {
       copyTreeWithReplacement(
-        path.join(REPO_ROOT, 'skills', ssk),
-        path.join(P.agySkills, ssk),
+        path.join(REPO_ROOT, 'skills', 'research-routing'),
+        path.join(searchPluginDir, 'skills', 'research-routing'),
         forwardHome,
         forwardWs,
       );
-      if (opts.workspacePath) {
-        const wsSkillDir = path.join(opts.workspacePath, '.agents', 'skills', ssk);
+    }
+
+    const optionalPlugins = [
+      { name: 'docx-delivery', src: path.join(REPO_ROOT, 'skills', 'docx-delivery') },
+      { name: 'lieflat-less-ai-tone', src: path.join(REPO_ROOT, 'tone', 'lieflat-less-ai-tone') },
+      { name: 'humanizer-zh', src: path.join(REPO_ROOT, 'tone', 'humanizer-zh') },
+    ];
+    for (const op of optionalPlugins) {
+      const opDst = path.join(P.plugins, op.name);
+      if (isManagedDir(opDst)) {
+        copyTreeWithReplacement(op.src, opDst, forwardHome, forwardWs);
+        writeManagedMarker(opDst);
+      } else {
+        console.log('  [SKIP (unmanaged)] ' + opDst);
+      }
+    }
+
+    for (const ssk of STANDALONE_SKILLS) {
+      const sskDst = path.join(P.agySkills, ssk);
+      if (isManagedDir(sskDst)) {
         copyTreeWithReplacement(
           path.join(REPO_ROOT, 'skills', ssk),
-          wsSkillDir,
+          sskDst,
           forwardHome,
           forwardWs,
         );
+        writeManagedMarker(sskDst);
+      } else {
+        console.log('  [SKIP (unmanaged)] ' + sskDst);
+      }
+      if (opts.workspacePath) {
+        const wsSkillDir = path.join(opts.workspacePath, '.agents', 'skills', ssk);
+        if (isManagedDir(wsSkillDir)) {
+          copyTreeWithReplacement(
+            path.join(REPO_ROOT, 'skills', ssk),
+            wsSkillDir,
+            forwardHome,
+            forwardWs,
+          );
+          writeManagedMarker(wsSkillDir);
+        } else {
+          console.log('  [SKIP (unmanaged)] ' + wsSkillDir);
+        }
       }
     }
     console.log('[4/5] Deployed Layer 4 (skills/ & agents/) & Layer 5 (tone/).');
 
-    // 5. Enable 5 plugins in ~/.gemini/config/config.json
+    // 5. Enable 5 plugins in ~/.gemini/config/config.json (migrate legacy key)
     const cfgObj = existingCfg && typeof existingCfg === 'object' && !Array.isArray(existingCfg) ? existingCfg : {};
     if (!cfgObj.plugins || typeof cfgObj.plugins !== 'object' || Array.isArray(cfgObj.plugins)) {
       cfgObj.plugins = {};
     }
+    delete cfgObj.plugins[LEGACY_PLUGIN_NAME];
     for (const pName of PLUGIN_NAMES) {
       if (!cfgObj.plugins[pName] || typeof cfgObj.plugins[pName] !== 'object') {
         cfgObj.plugins[pName] = { enabled: true };
@@ -511,19 +574,33 @@ async function uninstall(opts) {
   const cfgObj = hookOnly ? null : readJsonOrNull(P.configJson, 'existing config.json');
 
   // Managed targets (excluding config/config.json, which is handled via key removal)
-  const managedRelPaths = getManagedTargets(hookOnly)
-    .map((x) => x.rel)
-    .filter((rel) => rel !== 'config/config.json');
+  const managedTargets = getManagedTargets(hookOnly)
+    .filter((x) => x.rel !== 'config/config.json');
+  if (!hookOnly) {
+    managedTargets.push({ rel: 'config/plugins/' + LEGACY_PLUGIN_NAME, isDir: true });
+  }
 
   const toRestore = [];
   const toDelete = [];
-  for (const rel of managedRelPaths) {
+  const skippedUnmanaged = [];
+  for (const item of managedTargets) {
+    const rel = item.rel;
     const backupItem = path.join(latest, rel);
     const liveItem = path.join(P.gemini, rel);
+    if (rel === 'config/plugins/' + LEGACY_PLUGIN_NAME) {
+      if (fs.existsSync(liveItem)) {
+        toDelete.push({ rel, liveItem });
+      }
+      continue;
+    }
     if (fs.existsSync(backupItem)) {
       toRestore.push({ rel, backupItem, liveItem });
     } else if (fs.existsSync(liveItem)) {
-      toDelete.push({ rel, liveItem });
+      if (item.isDir && rel !== 'config/plugins/antigravity-core-rules' && !isManagedDir(liveItem)) {
+        skippedUnmanaged.push({ rel, liveItem });
+      } else {
+        toDelete.push({ rel, liveItem });
+      }
     }
   }
 
@@ -535,9 +612,10 @@ async function uninstall(opts) {
   console.log('');
   console.log('Planned actions:');
   for (const r of toRestore) console.log('  [RESTORE from backup] ' + r.liveItem);
-  for (const d of toDelete) console.log('  [DELETE (new item)]   ' + d.liveItem);
+  for (const d of toDelete) console.log('  [DELETE (managed)]    ' + d.liveItem);
+  for (const s of skippedUnmanaged) console.log(`  [SKIP (unmanaged)]    ${s.liveItem} (no ${MANAGED_MARKER} marker)`);
   if (!hookOnly && fs.existsSync(P.configJson)) {
-    console.log('  [CLEANUP 5 plugins]   ' + P.configJson);
+    console.log('  [CLEANUP plugins]     ' + P.configJson);
   }
   if (!toRestore.length && !toDelete.length && (hookOnly || !fs.existsSync(P.configJson))) {
     console.log('  (nothing to do)');
@@ -563,8 +641,9 @@ async function uninstall(opts) {
     }
   }
 
-  // 3. Remove only the 5 plugin entries from config.json
+  // 3. Remove only the plugin entries owned by this repo from config.json
   if (!hookOnly && cfgObj && cfgObj.plugins && typeof cfgObj.plugins === 'object') {
+    delete cfgObj.plugins[LEGACY_PLUGIN_NAME];
     for (const pName of PLUGIN_NAMES) {
       delete cfgObj.plugins[pName];
     }

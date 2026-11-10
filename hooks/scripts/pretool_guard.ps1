@@ -6,7 +6,7 @@
 #            {"toolCall":{"name":"run_command","args":{"CommandLine":"npm test"}},
 #             "conversationId":"...", "stepIdx":19}
 #   stdout : exactly ONE JSON object, nothing else.
-#            {"decision":"ask"}                  non-flagged command (defaultDecision)
+#            {"decision":"allow"}                non-flagged command (defaultDecision)
 #            {"decision":"deny","reason":"..."}  flagged command
 #            {"decision":"force_ask","reason":"..."}  confirm-tier command, only
 #                                                when confirmDecision is set to it
@@ -23,18 +23,20 @@
 #                --hard, stopping a proxy client). Answered with confirmDecision,
 #                which defaults to "deny" so nothing changes until the user opts in.
 #   3. SETTINGS. Optional pretool_guard_settings.json next to this script:
-#        { "defaultDecision": "ask" | "allow",
+#        { "defaultDecision": "allow" | "ask",
 #          "confirmDecision": "deny" | "force_ask" | "ask",
 #          "logAll": false }
 #      Environment variables win over the file: AGY_HOOK_DEFAULT_DECISION,
 #      AGY_HOOK_CONFIRM_DECISION, AGY_HOOK_LOG_ALL. AGY_HOOK_SETTINGS points at
 #      a different settings file. A missing, unreadable or invalid file, and
-#      any unknown value, fall back to the strict defaults ("ask" / "deny").
+#      any unknown value, fall back to the defaults ("allow" / "deny").
 #      The file exists because a GUI-launched host does not inherit the
 #      environment of the user's shell.
-#   4. WHAT "ask" AND "allow" MEAN IS DECIDED BY THE HOST, not by this script.
-#      Check the hooks documentation of the installed client version and try
-#      both on a real host before changing defaultDecision.
+#   4. WHAT "allow" AND "ask" MEAN IS DECIDED BY THE HOST, not by this script.
+#      Per Antigravity's 6-value PreToolUse contract (allow / auto_approve / ask /
+#      force_ask / deny / deny_unless_prior_grant), "allow" defers to the next
+#      hook or the host's approval policy (whereas "auto_approve" bypasses
+#      Ask-First confirmation).
 #   5. FAIL-OPEN TO DEFAULT DECISION. Any internal error returns defaultDecision
 #      so a broken guard never wedges the synchronous agent loop.
 #   6. PRIVACY & SECRET REDACTION IN AUDIT LOG. By default, hook_log.jsonl only
@@ -87,7 +89,7 @@ if ($null -ne $settings) {
     } catch { }
 }
 
-$defaultMode = Pick-Decision $env:AGY_HOOK_DEFAULT_DECISION $fileDefault '^(allow|ask)$' 'ask'
+$defaultMode = Pick-Decision $env:AGY_HOOK_DEFAULT_DECISION $fileDefault '^(allow|ask)$' 'allow'
 $confirmMode = Pick-Decision $env:AGY_HOOK_CONFIRM_DECISION $fileConfirm '^(deny|force_ask|ask)$' 'deny'
 $DEFAULT_PASS = '{"decision":"' + $defaultMode + '"}'
 $result       = $DEFAULT_PASS

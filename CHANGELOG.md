@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.3.3] - 2026-11-11
+
+- **Hook 非黑名单默认决策改回 `"allow"`（交回宿主默认审批策略）并完成 Windows 真机与宿主二进制验证**：
+  - 更新 `hooks/scripts/pretool_guard.ps1`、`hooks/scripts/pretool_guard.cjs` 与 `hooks/scripts/verify-hook.py`：将未命中高危黑名单命令的 `defaultDecision` 默认值从 `"ask"` 改回 `"allow"`（仍支持通过 `pretool_guard_settings.json` 或 `AGY_HOOK_DEFAULT_DECISION=ask` 显式改为 `"ask"`）。
+  - **宿主二进制与真机实测结论（`VERIFIED`）**：经核查 Antigravity 在线官方文档（`antigravity.google/docs/hooks`）与 Windows 桌面端 `2.31.0` `language_server.exe` 的 6 值 `PreToolUse` 状态机实现（`allow` / `auto_approve` / `ask` / `force_ask` / `deny` / `deny_unless_prior_grant`），`"auto_approve"`（日志标签 `hook_auto_approve`）才是将 Ask-First 基础策略覆盖为自动执行的返回值；`"allow"` 会检查宿主基础策略（Turbo 下直接放行、Ask-First 下交回宿主审批），而 `"ask"` 则会强制触发确认框，导致 Turbo 用户执行 `git status` 等常规命令也被迫弹窗确认。在 Windows 桌面端真机挂载更新后的 `pretool_guard.ps1` 实测：常规只读命令（`git status -sb`）返回 `allow` 无弹窗顺畅执行，受控高危探针（`rm -r __nonexistent_hook_probe__`）返回 `deny` 硬拦截并写入 `hook_log.jsonl`。
+- **`mcp/agent-bridge`（v0.2.0）注册键名防撞车、子进程环境变量最小白名单与状态文件 `0o600` 权限**：
+  - 将包名、二进制名、MCP `serverInfo.name` 及文档示例注册键统一从 `agent-bridge` 改为 **`agy-agent-bridge`**（`mcpServers['agy-agent-bridge']`），避免与社区现有的 `@paulmh/agentbridge-mcp`、`raysonmeng/agent-bridge`、`EthanSK/agent-bridge` 等同名冲突。
+  - 移除 `bridge.mjs` 中把宿主机全量环境变量原样传给子进程的 `env: process.env`，改为 `buildChildEnv()` 最小系统白名单（`SAFE_ENV_KEYS`），默认剥离所有非白名单变量及匹配 `*_KEY` / `*_TOKEN` / `*_SECRET` / `*_PASSWORD` / `*_CREDENTIAL*` 和 `BRIDGE_*` 的敏感变量；如需向特定后端显式透传指定变量名，可通过 `BRIDGE_PASS_ENV="VAR1,VAR2"` 按需放行。
+  - `saveState()` 创建状态目录时显式指定 `mode: 0o700`，落盘 `sessions.json` 时显式设置 `mode: 0o600` 并调用 `fs.chmod(STATE_FILE, 0o600)` 收紧权限。
+  - `mcp/agent-bridge/verify.mjs` 扩充至 **35/35** 项断言（新增子进程敏感环境变量剥离、`BRIDGE_PASS_ENV` 显式放行与 `sessions.json` `0o600` 权限校验）。
+- **安装器与卸载器新增 `.antigravity-rules-managed` 来源标记防覆盖保护**：
+  - 更新 `install.ps1`、`uninstall.ps1` 与 `hooks/unix/hooks-installer.mjs`：安装本仓库管理的插件与 Skill 目录时自动写入 `.antigravity-rules-managed` 标记文件。
+  - 若安装前检测到目标同名目录（如 `~/.gemini/antigravity/skills/chinese-novelist`、`~/.gemini/config/plugins/humanizer-zh` 等）已存在且**不含** `.antigravity-rules-managed`（例如用户此前已安装带全套脚本的上游完整版 Skill），默认打印 `[SKIP (unmanaged)]` 并跳过覆盖；卸载时同样校验该标记，绝不删除非本包创建的同名目录。
+- **主插件 ID 中性化（`anyi-global-rules` → `antigravity-core-rules`）与个人工作流习惯解耦**：
+  - 将主插件名从 `anyi-global-rules` 统一改为中性的 **`antigravity-core-rules`**（涵盖 `global/plugin.json`、`global/GEMINI.md`、`agents/flash-verifier.md`、`skills/client-maintenance/SKILL.md`、`skills/multi-agent-orchestrator/SKILL.md`、`install.ps1`、`uninstall.ps1`、`hooks/unix/hooks-installer.mjs` 及 `README.md`）。
+  - `install.ps1`、`uninstall.ps1` 与 `hooks/unix/hooks-installer.mjs` 支持自动检测并迁移/清理旧版 `~/.gemini/config/plugins/anyi-global-rules` 目录与 `config.json` 中的 `plugins["anyi-global-rules"]` 旧键。
+  - 将 `global/GEMINI.md` 与 `global/AGENTS.md` 中的 `共享待办` 条目明确标注为“仅在用户显式配置了共享待办文件路径时生效；未配置时忽略”。
+- **修复裁剪版第三方 Skill 中的悬空本地相对链接**：
+  - 更新 `skills/chinese-novelist/SKILL.md` 与 `tone/lieflat-less-ai-tone/skills/lieflat-less-ai-tone/SKILL.md`：将正文中指向 `references/flows/phase*.md`、`shared-infrastructure.md` 等未随精简包分发的本地相对路径全部替换为上游 GitHub 仓库的完整网页链接，并显式注明“本精简包不含 `references/`、`scripts/` 或 `RESEARCH.md` 子文件，请勿调用本地文件读取工具查找”，消除模型触发 `ENOENT` 白耗轮次的问题。
+
 ## [1.3.2] - 2026-11-11
 
 - **补齐纯正文创作与前端面板同步场景的思考可见性豁免槽**：

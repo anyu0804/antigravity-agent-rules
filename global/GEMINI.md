@@ -23,13 +23,13 @@
 
 - **Windows**：优先使用 Git Bash（bash 语法）执行终端命令，显式调用 `bash -lc "..."`（位于 `C:\Program Files\Git\bin\bash.exe`）。不要默认写 PowerShell/pwsh 语法，除非该操作只能由 PowerShell 完成或用户点名要求；必须用 PowerShell 时，一律用 pwsh 7（`pwsh`），不用 `powershell`（5.1），不要主动另起 cmd。
 - **macOS / Linux**：直接使用系统原生 `zsh` 或 `bash`（如 `bash -lc "..."` / `zsh -lc "..."`）。
-- **例外**：验证目标脚本（BAT/CMD/PowerShell/sh）时允许调用其实际解释器完成实跑；脱钩启动桌面 GUI 客户端或独立常驻程序时允许按平台使用 `Start-Process` / `cmd /c start "" <exe>`（Windows）或 `open -a` / `nohup ... >/dev/null 2>&1 &`（macOS / Linux，见 [BACKGROUND-RESOURCES.md](./config/plugins/anyi-global-rules/rules/BACKGROUND-RESOURCES.md)）。
+- **例外**：验证目标脚本（BAT/CMD/PowerShell/sh）时允许调用其实际解释器完成实跑；脱钩启动桌面 GUI 客户端或独立常驻程序时允许按平台使用 `Start-Process` / `cmd /c start "" <exe>`（Windows）或 `open -a` / `nohup ... >/dev/null 2>&1 &`（macOS / Linux，见 [BACKGROUND-RESOURCES.md](./config/plugins/antigravity-core-rules/rules/BACKGROUND-RESOURCES.md)）。
 
 ## 多代理委派（Subagent 派工）
 
-- 任务涉及子代理分工、只读验证/日志筛查/哈希对账、跨模块检索、隔离实验，或需通过 MCP 桥驱动外部 Agent 时，先读 [multi-agent-orchestrator Skill](./config/plugins/anyi-global-rules/skills/multi-agent-orchestrator/SKILL.md) 再派工。
-- 默认脏活（高频扫描、只读校验、长日志定位）派 `flash`（3.8f）子代理（全局 [flash-verifier](./config/plugins/anyi-global-rules/agents/flash-verifier.md)）；需深度推理或代码施工的子任务用 `Model: "inherit"`。
+- 任务涉及子代理分工、只读验证/日志筛查/哈希对账、跨模块检索、隔离实验，或需通过 MCP 桥驱动外部 Agent 时，先读 [multi-agent-orchestrator Skill](./config/plugins/antigravity-core-rules/skills/multi-agent-orchestrator/SKILL.md) 再派工。
+- 默认脏活（高频扫描、只读校验、长日志定位）派 `flash`（3.8f）子代理（全局 [flash-verifier](./config/plugins/antigravity-core-rules/agents/flash-verifier.md)）；需深度推理或代码施工的子任务用 `Model: "inherit"`。
 
-## 共享待办入口（可选）
+## 共享待办入口（仅在用户配置时生效）
 
-（可选：如果你有共享待办文件）接手未完成工作或交接时，读取该共享待办清单；按当前授权和证据更新对应条目，清单不自动授权执行，不另复制一套待办。
+- **仅在用户显式配置了共享待办文件路径时生效**（未配置时直接忽略本条，切勿主动搜寻或创建待办文件）：接手未完成工作或交接时，读取用户指定的共享待办清单，按当前授权和证据更新对应条目；清单本身不自动构成执行授权，不另复制一套待办。

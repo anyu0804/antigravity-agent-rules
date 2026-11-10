@@ -5,10 +5,11 @@
 #   1. Restores files/directories that existed before installation from the
 #      latest backup_antigravity_rules_* directory.
 #   2. Deletes files and plugin/skill directories that did not exist before
-#      installation.
-#   3. In config.json, removes only the 5 plugin entries owned by this repo
-#      (anyi-global-rules, search-routing, docx-delivery,
-#      lieflat-less-ai-tone, humanizer-zh), preserving all other settings.
+#      installation (only if directories carry .antigravity-rules-managed).
+#   3. In config.json, removes only the plugin entries owned by this repo
+#      (antigravity-core-rules, legacy anyi-global-rules, search-routing,
+#      docx-delivery, lieflat-less-ai-tone, humanizer-zh), preserving all
+#      other settings.
 #   4. Requires 'y' confirmation by default (use -Force to skip).
 #
 # Usage:
@@ -77,6 +78,8 @@ if (Test-Path -LiteralPath $ConfigJsonPath) {
     }
 }
 
+$ManagedMarkerFile = '.antigravity-rules-managed'
+
 # Managed targets (excluding config\config.json, which is handled via key removal)
 $ManagedRelPaths = @(
     'GEMINI.md',
@@ -87,6 +90,7 @@ $ManagedRelPaths = @(
     'config\scripts\read_loop_settings.json',
     'config\scripts\test-cases.txt',
     'config\scripts\verify-hook.py',
+    'config\plugins\antigravity-core-rules',
     'config\plugins\anyi-global-rules',
     'config\plugins\search-routing',
     'config\plugins\docx-delivery',
@@ -101,16 +105,28 @@ if ($InstallMode -eq 'hook-only') {
     $ManagedRelPaths = @($ManagedRelPaths | Where-Object { $_ -like 'config\hooks.json' -or $_ -like 'config\scripts\*' })
 }
 
-$ToRestore = @()
-$ToDelete  = @()
+$ToRestore        = @()
+$ToDelete         = @()
+$SkippedUnmanaged = @()
 
 foreach ($rel in $ManagedRelPaths) {
     $backupItem = Join-Path $LatestBackup $rel
     $liveItem   = Join-Path $GeminiDir $rel
+    if ($rel -eq 'config\plugins\anyi-global-rules') {
+        if (Test-Path -LiteralPath $liveItem) {
+            $ToDelete += [PSCustomObject]@{ Rel = $rel; Live = $liveItem }
+        }
+        continue
+    }
     if (Test-Path -LiteralPath $backupItem) {
         $ToRestore += [PSCustomObject]@{ Rel = $rel; Backup = $backupItem; Live = $liveItem }
     } elseif (Test-Path -LiteralPath $liveItem) {
-        $ToDelete += [PSCustomObject]@{ Rel = $rel; Live = $liveItem }
+        $itemObj = Get-Item -LiteralPath $liveItem -Force
+        if ($itemObj.PSIsContainer -and $rel -ne 'config\plugins\antigravity-core-rules' -and (-not (Test-Path -LiteralPath (Join-Path $liveItem $ManagedMarkerFile)))) {
+            $SkippedUnmanaged += [PSCustomObject]@{ Rel = $rel; Live = $liveItem }
+        } else {
+            $ToDelete += [PSCustomObject]@{ Rel = $rel; Live = $liveItem }
+        }
     }
 }
 
@@ -125,10 +141,13 @@ foreach ($r in $ToRestore) {
     Write-Host ("  [RESTORE from backup] {0}" -f $r.Live)
 }
 foreach ($d in $ToDelete) {
-    Write-Host ("  [DELETE (new item)]   {0}" -f $d.Live)
+    Write-Host ("  [DELETE (managed)]    {0}" -f $d.Live)
+}
+foreach ($s in $SkippedUnmanaged) {
+    Write-Host ("  [SKIP (unmanaged)]    {0} (no $ManagedMarkerFile marker)" -f $s.Live)
 }
 if ($InstallMode -ne 'hook-only' -and (Test-Path -LiteralPath $ConfigJsonPath)) {
-    Write-Host ("  [CLEANUP 5 plugins]   {0}" -f $ConfigJsonPath)
+    Write-Host ("  [CLEANUP plugins]     {0}" -f $ConfigJsonPath)
 }
 
 if (-not $Force) {
@@ -159,8 +178,9 @@ foreach ($d in $ToDelete) {
     }
 }
 
-# 3. Remove only the 5 plugin entries from config.json
+# 3. Remove only the plugin entries owned by this repo from config.json
 $PluginNames = @(
+    'antigravity-core-rules',
     'anyi-global-rules',
     'search-routing',
     'docx-delivery',

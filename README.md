@@ -12,7 +12,7 @@
 > 使用前请注意以下四点边界：
 > 1. **支持 Windows、macOS 与 Linux 全平台一键部署**：Windows 使用 [`install.ps1`](./install.ps1)（兼容 PowerShell 5.1 / `pwsh` 7，挂载 `pretool_guard.ps1`），macOS / Linux 使用 [`./install.sh`](./install.sh)（基于 Node.js >= 18，挂载跨平台 `pretool_guard.cjs`）。两端均默认执行 **5 层全量安装**，也都支持 `-HookOnly` / `--hook-only` 仅装 Hook 层。
 > 2. **正则黑名单是安全网，不是沙箱，可以被绕过**。它已覆盖 `git -C` 全局参数穿透、`rm -r`、`find -delete`、`git checkout -- .`、`git restore .`、`git push origin +main`、`bash -c`/`python -c`/`node -e` 单行删除及上下文数据引号掩码（避免 `grep "rm -rf"` 或 `git commit -m "...rm -rf..."` 误拦），但本质仍是正则匹配，不能替代容器或 OS 级权限隔离。
-> 3. **Hook 默认返回 `ask` + 两档拦截 + 日志脱敏**：`pretool_guard.ps1` / `pretool_guard.cjs` 对未命中高危黑名单的命令**默认返回 `{"decision":"ask"}`**。按 Antigravity 当前的 [Hooks 文档](https://antigravity.google/docs/hooks)，`ask` 是向用户请求确认（“始终允许”名单内的命令除外），`allow` 才是不干预、交给下一个 Hook 或宿主默认审批策略，直接批准的是 `auto_approve`；较早版本的文档对 `allow` 的描述不同，**实际行为以你安装的客户端版本为准**。改默认值前请在真机上把 `ask` 和 `allow` 各试一次，再写进脚本同目录的 `pretool_guard_settings.json`（见下文「拦什么、放什么」；环境变量 `AGY_HOOK_DEFAULT_DECISION` 仍然优先，但从 Dock / 开始菜单启动的客户端通常读不到 shell 里设的环境变量）。命中黑名单的命令分 block / confirm 两档，**默认两档都返回 `deny`**。审计日志 `hook_log.jsonl` **默认只记录被标记（`DENY-DANGER` / `CONFIRM-DANGER`）与解析故障（`ERROR-FAILOPEN`）事件**，不记录日常放行命令，且落盘前自动将命令行中的 Token、密码与 API Key 脱敏为 `<REDACTED>`。
+> 3. **Hook 默认返回 `allow`（交回宿主审批策略） + 两档拦截 + 日志脱敏**：`pretool_guard.ps1` / `pretool_guard.cjs` 对未命中高危黑名单的命令**默认返回 `{"decision":"allow"}`**。按 Antigravity 当前 [Hooks 官方文档](https://antigravity.google/docs/hooks) 及 Windows 桌面端 `2.31.0` 宿主二进制（`language_server.exe`）真机实测（`VERIFIED`）：6 值返回值（`allow` / `auto_approve` / `ask` / `force_ask` / `deny` / `deny_unless_prior_grant`）中，**`allow` 才是“不干预、交回下一个 Hook 或宿主默认审批策略”**（Turbo 模式下直接放行，Ask-First 模式下仍走宿主确认；**真正替用户跳过 Ask-First 点同意的是 `auto_approve`**）；而 `ask` 是显式要求弹窗确认，若把默认设成 `ask`，Turbo 用户更新后连跑 `git status` 都可能被迫点确认。如需调整，可在脚本同目录新建 `pretool_guard_settings.json`（见下文「拦什么、放什么」；环境变量 `AGY_HOOK_DEFAULT_DECISION` 仍然优先）。命中黑名单的命令分 block / confirm 两档，**默认两档都返回 `deny`**。审计日志 `hook_log.jsonl` **默认只记录被标记（`DENY-DANGER` / `CONFIRM-DANGER`）与解析故障（`ERROR-FAILOPEN`）事件**，不记录日常放行命令，且落盘前自动将命令行中的 Token、密码与 API Key 脱敏为 `<REDACTED>`。
 > 4. 不要把本仓库所有 `.md` 文件拼接塞进同一个系统提示词（System Prompt / `GEMINI.md`）全量常驻。大模型有效注意力有限，全设为 `always_on` 不但白占数万 Token 推理空间，日常聊句简单问答也会触发繁琐的工程仪式并冲淡安全红线。正确用法是只让 `global/` 下约 100 行核心规则常驻，高危命令交给 `hooks/` 在进程级拦截（0 Token 开销），其余 `rules/`、`tone/` 和 `skills/` 由模型按场景触发读取。
 
 ---
@@ -51,7 +51,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 1. 校验：先解析现有 `~/.gemini/config/config.json` 与 `hooks.json` 语法，解析失败直接报错退出，不留半成品状态。
 2. 确认：列出 `~/.gemini` 下即将被合并或覆盖的文件/目录，等你输入 `y` 确认后才继续（默认否，加 `-Force` / `--force` 可跳过）。
 3. 备份：把安装前已存在的文件与目录完整备份到 `~/.gemini/backup_antigravity_rules_<timestamp>/`，同时记录 `manifest.json`（含 `mode: full | hook-only`）。
-4. 无损合并与分发：合并 `GEMINI.md` 与 `hooks.json`，将 `file:///<YOUR_PATH>/.gemini/` 链接占位符替换为当前用户家目录正斜杠路径，分发 5 层文件（5 个插件 + 2 个独立 Skills）并在 `config.json` 中启用 5 个插件。
+4. 无损合并与分发：合并 `GEMINI.md` 与 `hooks.json`，将 `file:///<YOUR_PATH>/.gemini/` 链接占位符替换为当前用户家目录正斜杠路径，分发 5 层文件（5 个插件 + 2 个独立 Skills，写入 `.antigravity-rules-managed` 来源标记；若目标同名目录已存在且无该标记则自动跳过，避免覆盖用户自装的完整版同名 Skill），并在 `config.json` 中启用 5 个插件（同时自动清理旧版 `anyi-global-rules` 遗留目录与键名）。
 5. 脚本回归自检：自动运行 `verify-hook.py` 验证全部断言通过（Windows PowerShell 守卫 194 项，macOS / Linux Node 守卫 242 项，含密钥脱敏与零 `ERROR-FAILOPEN` 校验）。
 
 只想要拦截功能、不想换掉自己的规则，就用 `-HookOnly`（Windows）或 `--hook-only`（macOS / Linux）：只合并 `hooks.json` 并部署 `scripts/`，第 4 步里的 `GEMINI.md`、插件和 `config.json` 全部跳过，自检照常运行。卸载脚本会从备份的 `manifest.json` 自动识别 `full` 或 `hook-only` 模式，按对应范围还原。
@@ -59,19 +59,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 <details>
 <summary>点击展开：无损合并与占位符替换细节</summary>
 
-- `GEMINI.md`：用 `<!-- antigravity-agent-rules:begin -->` 与 `<!-- antigravity-agent-rules:end -->` 标记包裹本仓库规则追加到文件末尾；若已有标记则只替换标记之间的内容，保留你原有的内容。通用规则已移除个人笔名与项目专属占位符，开箱即可直接作为通用配置使用。
+- `GEMINI.md`：用 `<!-- antigravity-agent-rules:begin -->` 与 `<!-- antigravity-agent-rules:end -->` 标记包裹本仓库规则追加到文件末尾；若已有标记则只替换标记之间的内容，保留你原有的内容。通用规则已移除个人笔名与项目专属占位符（`共享待办` 等个人工作流习惯标为“仅在用户显式配置时生效”），开箱即可直接作为通用配置使用。
 - `hooks.json`：按顶层键合并，只新增或替换 `hard-gate`、`read-loop-efficiency`、`read-loop-enforcement` 三个键，保留你原有的其他钩子配置。
+- 来源标记防覆盖保护（`.antigravity-rules-managed`）：安装器会在其创建的插件与 Skill 目录内写入 `.antigravity-rules-managed`。若安装前检测到 `~/.gemini/antigravity/skills/chinese-novelist`、`~/.gemini/config/plugins/humanizer-zh` 等同名目录已存在且**不含** `.antigravity-rules-managed`（例如用户此前自行安装了带全套脚本的上游完整版），安装器默认打印 `[SKIP (unmanaged)]` 并跳过覆盖，卸载时也绝不删除无标记目录。
 - 路径占位符替换：把规则链接里的 `<YOUR_PATH>` 自动替换为当前用户的家目录正斜杠路径（Windows 为 `$env:USERPROFILE`，macOS / Linux 为 `$HOME`，同时在 Unix 下将路径前缀 `%USERPROFILE%\...` 转为 `$HOME/...`）；若传入 `-WorkspacePath "D:\MyProject"` 或 `--workspace-path "/path/to/project"`，还会将独立 Skills 同步复制到工作区 `.agents/skills/`。
 
 </details>
 
-卸载脚本（`uninstall.ps1` 与 `./uninstall.sh`）经 `y` 确认后，从最近一次 `~/.gemini/backup_antigravity_rules_*` 还原安装前已存在的文件与目录，删掉安装时新建的脚本与插件目录，并在 `~/.gemini/config/config.json` 中只移除本仓库的 5 个插件条目（`anyi-global-rules`、`search-routing`、`docx-delivery`、`lieflat-less-ai-tone`、`humanizer-zh`），保留其余配置。
+卸载脚本（`uninstall.ps1` 与 `./uninstall.sh`）经 `y` 确认后，从最近一次 `~/.gemini/backup_antigravity_rules_*` 还原安装前已存在的文件与目录，仅删掉带有 `.antigravity-rules-managed` 标记的新建插件/Skill 目录与脚本，并在 `~/.gemini/config/config.json` 中只移除本仓库的插件条目（`antigravity-core-rules`、旧版 `anyi-global-rules`、`search-routing`、`docx-delivery`、`lieflat-less-ai-tone`、`humanizer-zh`），保留其余配置。
 
 ### macOS / Linux 跨平台安装与守卫细节
 
 依据 Antigravity Hooks 协议规范，macOS / Linux 版与 Windows 版使用同一套 `~/.gemini` 目录结构与生命周期钩子协议（payload 和 `{"decision": ...}` 返回格式一致，区别仅在于 hook 命令在 Unix 上经 `sh -c` 执行，Windows 上经 `cmd /c` 执行）：
 
-- 拦截脚本使用 [`hooks/scripts/pretool_guard.cjs`](./hooks/scripts/pretool_guard.cjs)。通用/Windows 规则与 `pretool_guard.ps1` 逐条同步，另外补齐了 17 条 macOS / Linux 专属规则：磁盘与系统完整性保护（`diskutil erase*`、`dd of=/dev/`、`mkfs` / `newfs_*`、`tmutil delete`、`csrutil disable`）；结束代理客户端（`kill` / `pkill` / `killall`、`launchctl bootout/unload`、`systemctl stop`、`osascript ... quit`，覆盖 ClashX、Clash Verge、mihomo、sing-box、Surge、Stash 等）；修改网络与系统代理（`networksetup -set*`、`ifconfig ... down`、`ipconfig set`、`route delete/flush/change`、`pfctl -d/-F`、`nmcli ... off/down`）。只读诊断命令（`networksetup -get*`、`scutil --proxy`、`pgrep`、`launchctl list`、`diskutil list`）照常返回 `ask`。
+- 拦截脚本使用 [`hooks/scripts/pretool_guard.cjs`](./hooks/scripts/pretool_guard.cjs)。通用/Windows 规则与 `pretool_guard.ps1` 逐条同步，另外补齐了 17 条 macOS / Linux 专属规则：磁盘与系统完整性保护（`diskutil erase*`、`dd of=/dev/`、`mkfs` / `newfs_*`、`tmutil delete`、`csrutil disable`）；结束代理客户端（`kill` / `pkill` / `killall`、`launchctl bootout/unload`、`systemctl stop`、`osascript ... quit`，覆盖 ClashX、Clash Verge、mihomo、sing-box、Surge、Stash 等）；修改网络与系统代理（`networksetup -set*`、`ifconfig ... down`、`ipconfig set`、`route delete/flush/change`、`pfctl -d/-F`、`nmcli ... off/down`）。只读诊断命令（`networksetup -get*`、`scutil --proxy`、`pgrep`、`launchctl list`、`diskutil list`）照常返回 `allow`（交回宿主审批策略）。
 - 安装器会把 `hooks.json` 里的命令改写成 `"/opt/homebrew/bin/node" ./scripts/pretool_guard.cjs` 这种绝对路径形式。原因是从 Dock 或桌面启动器拉起的 Antigravity 不一定继承终端里的 PATH，直接写 `node` 可能找不到。
 - PowerShell 5.1 的 GBK 编码问题在 macOS / Linux 上不存在：Node 版按原始字节读 stdin 并按 UTF-8 解码。
 - `global/GEMINI.md` 与 `skills/safe-network-diagnostics/SKILL.md` 已内置 Windows / macOS / Linux 三端分流的 Shell 偏好（Windows 用 Git Bash / `pwsh` 7，macOS / Linux 用原生 `zsh` / `bash`）及三端只读网络诊断命令对照（`scutil --proxy`、`networksetup -get*`、`lsof`、`ss -tulnp`、`ip addr` 等）。
@@ -96,11 +97,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 - **block 档**：不可逆、且不可能发生在工作区内的操作——格式化或重建磁盘、删除文件系统根目录 / 盘符根 / 家目录 / 系统目录（`rm -rf /`、`rm -rf ~`、`Remove-Item C:\ -Recurse`、`rd /s /q C:\Users`）、从 `/` 或 `~` 起 `find ... -delete`。恒定返回 `{"decision":"deny","reason":"HARD GATE: blocked - ..."}`，任何设置都改不了。
 - **confirm 档**：其余全部规则——工作区内的递归删除、Git 破坏性操作、注册表删除、代理与网络操作。返回 `confirmDecision`，**默认是 `deny`，与之前的行为一致**；设为 `force_ask` 后改为每次弹出确认（返回 `{"decision":"force_ask","reason":"CONFIRM: ..."}`），`rm -r dist`、`git reset --hard` 这类有时确实想执行的命令由用户当场决定。
 
-**未命中黑名单的命令默认返回 `{"decision":"ask"}`**。两个默认值都可以在可选的 `pretool_guard_settings.json` 里改。该文件与守卫脚本同目录（`~/.gemini/config/scripts/`），仓库不自带，重新安装不会覆盖，卸载也不会删除：
+**未命中黑名单的命令默认返回 `{"decision":"allow"}`（交回宿主默认审批策略）**。两个默认值都可以在可选的 `pretool_guard_settings.json` 里改。该文件与守卫脚本同目录（`~/.gemini/config/scripts/`），仓库不自带，重新安装不会覆盖，卸载也不会删除：
 
 ```json
 {
-  "defaultDecision": "ask",
+  "defaultDecision": "allow",
   "confirmDecision": "force_ask",
   "logAll": false
 }
@@ -108,11 +109,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1
 
 | 键 | 可选值 | 默认 | 含义 |
 | :--- | :--- | :--- | :--- |
-| `defaultDecision` | `ask` / `allow` | `ask` | 未命中黑名单的命令返回什么 |
+| `defaultDecision` | `allow` / `ask` | `allow` | 未命中黑名单的命令返回什么（`allow` 为交回宿主默认策略，`ask` 为请求确认弹窗） |
 | `confirmDecision` | `deny` / `force_ask` / `ask` | `deny` | confirm 档返回什么；无法设成 `allow` |
 | `logAll` | `true` / `false` | `false` | 是否把未命中的命令也写进日志 |
 
-环境变量 `AGY_HOOK_DEFAULT_DECISION` / `AGY_HOOK_CONFIRM_DECISION` / `AGY_HOOK_LOG_ALL` 优先于文件，`AGY_HOOK_SETTINGS` 可指向另一份设置文件。文件缺失、JSON 损坏或取值无效时，一律回落到最严格的默认值（`ask` / `deny`）。`force_ask` 在 `/swarm` 后台 Worker 等无人应答场景下的宿主行为尚未在真机验证（`NOT_PROVEN`），所以没有把它设为默认。
+环境变量 `AGY_HOOK_DEFAULT_DECISION` / `AGY_HOOK_CONFIRM_DECISION` / `AGY_HOOK_LOG_ALL` 优先于文件，`AGY_HOOK_SETTINGS` 可指向另一份设置文件。文件缺失、JSON 损坏或取值无效时，一律回落到安全默认值（`allow` / `deny`）。`force_ask` 在 `/swarm` 后台 Worker 等无人应答场景下的宿主行为尚未在真机验证（`NOT_PROVEN`），所以没有把它设为默认。
 
 审计日志 `hook_log.jsonl` 默认仅记录 `DENY-DANGER`、`CONFIRM-DANGER` 与 `ERROR-FAILOPEN`（不记录日常放行命令，除非开启 `logAll`），并在写入前对命令行中的 Bearer Token、`sk-*`/`ghp_*`/`AIza*`/`AKIA*`、任意协议 URI 内嵌凭据（如 `https://user:pass@...`、`postgres://user:pass@...`）、`curl -u`、自定义敏感请求头、`--token`/`--password`/`-p`/`-a`/`API_KEY=` 等敏感凭据做正则脱敏。
 
@@ -153,7 +154,7 @@ flowchart TD
     B --> E["按需文风层: tone/<br/>(lieflat-less-ai-tone / humanizer-zh)"]
 ```
 
-- `hooks/`（硬拦截层）：在工具调用前后由宿主直接调用，不占模型上下文 Token。`pretool_guard.ps1`（Windows）与 `pretool_guard.cjs`（macOS / Linux）在进程级拦住强删、丢代码和杀代理断网命令（非黑名单默认返回 `ask`，审计日志仅记拦截项并自动脱敏密钥），`read_loop_guard.cjs` 在 `observe` 模式下记录重复读同一文件区间的死循环。
+- `hooks/`（硬拦截层）：在工具调用前后由宿主直接调用，不占模型上下文 Token。`pretool_guard.ps1`（Windows）与 `pretool_guard.cjs`（macOS / Linux）在进程级拦住强删、丢代码和杀代理断网命令（非黑名单默认返回 `allow` 交回宿主审批策略，审计日志仅记拦截项并自动脱敏密钥），`read_loop_guard.cjs` 在 `observe` 模式下记录重复读同一文件区间的死循环。
 - `global/`（Always-on 常驻底座）：只有 `GEMINI.md`、`AGENTS.md` 和 `THINKING-VISIBILITY.md` 三个文件常驻，共约 100 行。规定防开盒与路径脱敏、代理只读红线、按平台分流的 Shell 偏好（Windows 用 Git Bash / `pwsh` 7，macOS / Linux 用原生 `zsh` / `bash`）、主会话工具调用前显式说明排查脉络（后台并行子代理与纯正文创作/前端 Sidecar 同步协议豁免）、动作分级（含 `branch`/`share` 隔离 worktree 未合入主分支前批量修改豁免）、`FAST_PATH` / `INVESTIGATION_PATH` 切换、证据分级（`VERIFIED` / `NOT_PROVEN` / `HYPOTHESIS`）以及专项规则路由。
 - `rules/`（按需条件规则层）：带 `trigger: model_decision`，平时只向模型暴露一行触发条件描述。仅在涉及后台进程与 GUI 脱钩、诊断转施工判断、8 分钟长任务阶段汇报、打包发布、Windows 脚本编码或外部联网检索时按需加载。
 - `skills/` 与 `agents/`（按需执行协议与子代理层）：存放多步骤工程状态机与四态回报（`task-intake`）、多源检索（`research-routing`）、只读网络排查（`safe-network-diagnostics`）、多代理与 `/swarm` 并行编排（`multi-agent-orchestrator`）、客户端缓存归档（`client-maintenance`）、Word 转换校验（`docx-delivery`）和小说创作（`chinese-novelist`）等标准作业程序，同时提供运行在 Gemini Flash 上的全局只读验证子代理 `flash-verifier.md` 来隔离长日志与哈希扫描脏活。
@@ -168,36 +169,36 @@ flowchart TD
 
 | 仓库内路径 | 原始部署路径（脱敏） | 所属层级 | 触发方式 | 一句话作用 |
 | :--- | :--- | :--- | :--- | :--- |
-| [`install.ps1`](./install.ps1) | 仓库根目录执行（Windows 一键部署入口） | 自动化部署 (`root`) | 手动执行（首次安装或更新规则时） | 预先校验 `config.json`/`hooks.json` 语法、列出待修改项并经 `y` 确认（支持 `-Force` / `-HookOnly`）、自动备份原配置、替换 `<YOUR_PATH>`、按标记/顶层键无损合并 `GEMINI.md` 与 `hooks.json`、分发 5 层文件、启用 5 个插件并跑通 `verify-hook.py` 194 项自检。 |
-| [`uninstall.ps1`](./uninstall.ps1) | 仓库根目录执行（Windows 一键卸载回滚） | 自动化部署 (`root`) | 手动执行（卸载或还原配置时） | 经 `y` 确认后（支持 `-Force`），从最近一次 `backup_antigravity_rules_*` 还原安装前已存在的文件，删除安装前不存在的文件与插件目录，并仅从 `config.json` 移除本仓库的 5 个插件条目。 |
-| [`install.sh`](./install.sh) / [`uninstall.sh`](./uninstall.sh) + [`hooks/unix/hooks-installer.mjs`](./hooks/unix/hooks-installer.mjs) | 仓库根目录执行（macOS / Linux 一键部署与卸载入口） | 自动化部署 (`root`) | 手动执行（macOS / Linux 全量安装、仅装 Hook 或卸载还原时） | 等价于 `install.ps1` / `uninstall.ps1` 的跨平台版（默认 5 层全量安装，支持 `--hook-only`、`--force`、`--workspace-path`）：预校验 `config.json`/`hooks.json`、备份、无损合并 `GEMINI.md` 与 `hooks.json`（改写 Node 绝对路径）、替换 `<YOUR_PATH>` 与 `%USERPROFILE%\`、分发 5 个插件与独立 Skills、启用 `config.json` 插件并跑通 `verify-hook.py --guard node` 242 项自检。 |
+| [`install.ps1`](./install.ps1) | 仓库根目录执行（Windows 一键部署入口） | 自动化部署 (`root`) | 手动执行（首次安装或更新规则时） | 预先校验 `config.json`/`hooks.json` 语法、列出待修改项并经 `y` 确认（支持 `-Force` / `-HookOnly`）、自动备份原配置、替换 `<YOUR_PATH>`、按标记/顶层键无损合并 `GEMINI.md` 与 `hooks.json`、分发 5 层文件（写入 `.antigravity-rules-managed` 并跳过用户自有未标记目录）、自动迁移旧版 `anyi-global-rules` 至 `antigravity-core-rules`、启用 5 个插件并跑通 `verify-hook.py` 194 项自检。 |
+| [`uninstall.ps1`](./uninstall.ps1) | 仓库根目录执行（Windows 一键卸载回滚） | 自动化部署 (`root`) | 手动执行（卸载或还原配置时） | 经 `y` 确认后（支持 `-Force`），从最近一次 `backup_antigravity_rules_*` 还原安装前已存在的文件，仅删除含 `.antigravity-rules-managed` 标记的新建目录与文件，并从 `config.json` 移除本仓库插件条目（含旧版 `anyi-global-rules`）。 |
+| [`install.sh`](./install.sh) / [`uninstall.sh`](./uninstall.sh) + [`hooks/unix/hooks-installer.mjs`](./hooks/unix/hooks-installer.mjs) | 仓库根目录执行（macOS / Linux 一键部署与卸载入口） | 自动化部署 (`root`) | 手动执行（macOS / Linux 全量安装、仅装 Hook 或卸载还原时） | 等价于 `install.ps1` / `uninstall.ps1` 的跨平台版（默认 5 层全量安装，支持 `--hook-only`、`--force`、`--workspace-path`）：预校验 `config.json`/`hooks.json`、备份、无损合并 `GEMINI.md` 与 `hooks.json`（改写 Node 绝对路径）、替换 `<YOUR_PATH>` 与 `%USERPROFILE%\`、分发 5 个插件与独立 Skills（带 `.antigravity-rules-managed` 保护与 `anyi-global-rules` 迁移）、启用 `config.json` 插件并跑通 `verify-hook.py --guard node` 242 项自检。 |
 | [`hooks/hooks.json`](./hooks/hooks.json) | `~/.gemini/config/hooks.json` | 硬拦截 Hook (`hooks/`) | `PreToolUse` (`run_command`) / `PostToolUse` (读写检索工具) | 注册 `hard-gate` 危险命令硬拦截与 `read-loop` 重复读取检测钩子。 |
-| [`hooks/scripts/pretool_guard.ps1`](./hooks/scripts/pretool_guard.ps1) | `~/.gemini/config/scripts/pretool_guard.ps1` | 硬拦截 Hook (`hooks/`) | `PreToolUse`（Windows 下每次 `run_command` 执行前同步触发） | 底层正则两档拦截（block 档恒定 `deny`，confirm 档默认 `deny`、可经可选同目录 `pretool_guard_settings.json` 设为 `force_ask`）：覆盖递归删除（`rm -r`、`Remove-Item -Recurse`、`find -delete`、解释器单行目录删除）、带路径可执行文件、`git -C` 全局选项下的 `reset --hard`/`push --force`/`+refspec`/`clean -fd`/`checkout .`/`restore .`、删注册表/格式化及杀代理断网命令；支持数据引号掩码防误拦（跳过传给 shell 执行或含命令替换的文本），非黑名单默认返回 `ask`，仅记录标记/故障日志并自动脱敏凭据。 |
-| [`hooks/scripts/pretool_guard.cjs`](./hooks/scripts/pretool_guard.cjs) | `~/.gemini/config/scripts/pretool_guard.cjs` | 硬拦截 Hook (`hooks/`) | `PreToolUse`（macOS / Linux 安装时挂载） | `pretool_guard.ps1` 的 Node 跨平台版：通用规则、两档拦截与 `pretool_guard_settings.json` 配置与 PS 版逐条同步（由 `verify-hook.py` 静态比对校验），另加 17 条 macOS / Linux 的磁盘、代理客户端与网络设置规则；默认返回 `ask` 并对日志做凭据脱敏。 |
+| [`hooks/scripts/pretool_guard.ps1`](./hooks/scripts/pretool_guard.ps1) | `~/.gemini/config/scripts/pretool_guard.ps1` | 硬拦截 Hook (`hooks/`) | `PreToolUse`（Windows 下每次 `run_command` 执行前同步触发） | 底层正则两档拦截（block 档恒定 `deny`，confirm 档默认 `deny`、可经可选同目录 `pretool_guard_settings.json` 设为 `force_ask`）：覆盖递归删除（`rm -r`、`Remove-Item -Recurse`、`find -delete`、解释器单行目录删除）、带路径可执行文件、`git -C` 全局选项下的 `reset --hard`/`push --force`/`+refspec`/`clean -fd`/`checkout .`/`restore .`、删注册表/格式化及杀代理断网命令；支持数据引号掩码防误拦（跳过传给 shell 执行或含命令替换的文本），非黑名单默认返回 `allow`（交回宿主审批策略），仅记录标记/故障日志并自动脱敏凭据。 |
+| [`hooks/scripts/pretool_guard.cjs`](./hooks/scripts/pretool_guard.cjs) | `~/.gemini/config/scripts/pretool_guard.cjs` | 硬拦截 Hook (`hooks/`) | `PreToolUse`（macOS / Linux 安装时挂载） | `pretool_guard.ps1` 的 Node 跨平台版：通用规则、两档拦截与 `pretool_guard_settings.json` 配置与 PS 版逐条同步（由 `verify-hook.py` 静态比对校验），另加 17 条 macOS / Linux 的磁盘、代理客户端与网络设置规则；默认返回 `allow` 并对日志做凭据脱敏。 |
 | [`hooks/scripts/read_loop_guard.cjs`](./hooks/scripts/read_loop_guard.cjs) | `~/.gemini/config/scripts/read_loop_guard.cjs` | 硬拦截 Hook (`hooks/`) | `PostToolUse`（默认 `observe`）/ `PreToolUse`（`enforce` 未启用） | 监测同一会话内对未变更文件相同行号区间的重复读取（兼容 `read_file`/`edit_file`/`write_file` 与旧版 `view_file` 等，含省略 `EndLine` 整文件读取及 5MB 日志自动轮转）。默认仅运行在 `observe` 模式；`enforce` 模式标 `NOT_PROVEN`。 |
 | [`hooks/scripts/read_loop_settings.json`](./hooks/scripts/read_loop_settings.json) | `~/.gemini/config/scripts/read_loop_settings.json` | 硬拦截 Hook (`hooks/`) | 被 `read_loop_guard.cjs` 读取 | 配置重复读取检测模式（默认 `"mode": "observe"`，三个 Verified 标志均为 `false`，`enforce` 模式 `NOT_PROVEN`）与重复次数上限（`repeatLimit: 3`）。 |
 | [`hooks/scripts/verify-hook.py`](./hooks/scripts/verify-hook.py) + [`test-cases.txt`](./hooks/scripts/test-cases.txt) | `~/.gemini/config/scripts/` | 硬拦截 Hook (`hooks/`) | 手动或安装时自动执行 | 用含中文路径的真实 UTF-8 载荷对 `pretool_guard.ps1`（194 项）与 `pretool_guard.cjs`（242 项）做全量离线回归校验（含双脚本规则同步比对），验证防漏拦、防误拦、凭据脱敏且 `ERROR-FAILOPEN` 为 `0`。 |
-| [`global/GEMINI.md`](./global/GEMINI.md) | `~/.gemini/GEMINI.md` | Always-on 全局规则 (`global/`) | `always_on`（所有会话自动注入） | 定义人机协作态度、防开盒与路径脱敏铁律（默认不填入系统用户名/Git 账号名）、跨平台用户代理与网络配置严格只读红线、按平台分流的 Shell 偏好（Windows: Git Bash/`pwsh` 7；macOS/Linux: 原生 `zsh`/`bash`）、子代理派工原则与可选共享待办入口。 |
-| [`global/AGENTS.md`](./global/AGENTS.md)（含 [`plugin.json`](./global/plugin.json)） | `~/.gemini/config/plugins/anyi-global-rules/rules/AGENTS.md` | Always-on 全局规则 (`global/`) | `trigger: always_on` | 全局工程主规则（§1–§15）：规定动作分级（主工作树修改 ≥5 个文件先问再动，`branch`/`share` 隔离 worktree 未合入主分支前豁免并留 Verifier 终审）、`FAST_PATH`/`INVESTIGATION_PATH` 轮次纪律、禁仪式化严谨、停止与资源边界、交付契约、证据真实性、数据保护、范围锁定及按需专项路由。 |
-| [`global/THINKING-VISIBILITY.md`](./global/THINKING-VISIBILITY.md) | `~/.gemini/config/plugins/anyi-global-rules/rules/THINKING-VISIBILITY.md` | Always-on 全局规则 (`global/`) | `trigger: always_on` | 按运行模式区分思考可见性：主会话交互保留每次工具调用前 1–2 句前置判断；对 `/swarm` 并行执行 worker、`flash-verifier`、`research` 等后台子代理，以及明确要求仅输出成稿正文/沉浸式对白的创作类 Skill（如 `chinese-novelist`）或前端 Sidecar 同步协议免除逐次工具前置播报（安全、隐私与数据保护红线照常生效）。 |
-| [`tone/lieflat-less-ai-tone/`](./tone/lieflat-less-ai-tone/skills/lieflat-less-ai-tone/SKILL.md) | `~/.gemini/config/plugins/lieflat-less-ai-tone/` | 文风层 (`tone/`) | 按需加载（创作或润色中文文章/文案/故事、或明确要求去 AI 味时；普通问答不加载） | 基于 283 万字语料统计的 11 条去 AI 味写作规范（与全局规则衔接版），清除宏大拔高、三连排比、翻译腔与连接词泛滥，严守事实与结构守恒（上游完整仓库见 [`UPSTREAM.md`](./tone/lieflat-less-ai-tone/UPSTREAM.md)）。 |
+| [`global/GEMINI.md`](./global/GEMINI.md) | `~/.gemini/GEMINI.md` | Always-on 全局规则 (`global/`) | `always_on`（所有会话自动注入） | 定义人机协作态度、防开盒与路径脱敏铁律（默认不填入系统用户名/Git 账号名）、跨平台用户代理与网络配置严格只读红线、按平台分流的 Shell 偏好（Windows: Git Bash/`pwsh` 7；macOS/Linux: 原生 `zsh`/`bash`）、子代理派工原则与可选共享待办入口（仅在用户配置时生效）。 |
+| [`global/AGENTS.md`](./global/AGENTS.md)（含 [`plugin.json`](./global/plugin.json)） | `~/.gemini/config/plugins/antigravity-core-rules/rules/AGENTS.md` | Always-on 全局规则 (`global/`) | `trigger: always_on` | 全局工程主规则（§1–§15）：规定动作分级（主工作树修改 ≥5 个文件先问再动，`branch`/`share` 隔离 worktree 未合入主分支前豁免并留 Verifier 终审）、`FAST_PATH`/`INVESTIGATION_PATH` 轮次纪律、禁仪式化严谨、停止与资源边界、交付契约、证据真实性、数据保护、范围锁定及按需专项路由。 |
+| [`global/THINKING-VISIBILITY.md`](./global/THINKING-VISIBILITY.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/THINKING-VISIBILITY.md` | Always-on 全局规则 (`global/`) | `trigger: always_on` | 按运行模式区分思考可见性：主会话交互保留每次工具调用前 1–2 句前置判断；对 `/swarm` 并行执行 worker、`flash-verifier`、`research` 等后台子代理，以及明确要求仅输出成稿正文/沉浸式对白的创作类 Skill（如 `chinese-novelist`）或前端 Sidecar 同步协议免除逐次工具前置播报（安全、隐私与数据保护红线照常生效）。 |
+| [`tone/lieflat-less-ai-tone/`](./tone/lieflat-less-ai-tone/skills/lieflat-less-ai-tone/SKILL.md) | `~/.gemini/config/plugins/lieflat-less-ai-tone/` | 文风层 (`tone/`) | 按需加载（创作或润色中文文章/文案/故事、或明确要求去 AI 味时；普通问答不加载） | 基于 283 万字语料统计的 11 条去 AI 味写作规范（与全局规则衔接版），清除宏大拔高、三连排比、翻译腔与连接词泛滥，严守事实与结构守恒（已将引用链接指向上游 GitHub 网页，上游完整仓库见 [`UPSTREAM.md`](./tone/lieflat-less-ai-tone/UPSTREAM.md)）。 |
 | [`tone/humanizer-zh/`](./tone/humanizer-zh/skills/humanizer-zh/SKILL.md) | `~/.gemini/config/plugins/humanizer-zh/` | 文风层 (`tone/`) | 按需加载（编辑或审阅已有中文文章/评论/文档、去除空话与模板化表达时） | 消除已有中文文本的空话、重复与模板腔，严格保留原文事实、确定程度与作者声音（上游仓库见 [`UPSTREAM.md`](./tone/humanizer-zh/UPSTREAM.md)）。 |
-| [`rules/BACKGROUND-RESOURCES.md`](./rules/BACKGROUND-RESOURCES.md) | `~/.gemini/config/plugins/anyi-global-rules/rules/BACKGROUND-RESOURCES.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（创建/管理临时子代理、后台任务、测试服、子进程或拉起桌面 GUI 前） | 规定“谁创建谁负责生命周期”、创建记身份、探针用完即杀、桌面 GUI 脱钩启动、禁止按进程名盲杀用户原有服务，以及活跃施工子代理（≤2–3）与重型编译/渲染子进程并发硬上限（≤1–2）。 |
-| [`rules/IMPLEMENTATION.md`](./rules/IMPLEMENTATION.md) | `~/.gemini/config/plugins/anyi-global-rules/rules/IMPLEMENTATION.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（判断证据是否已收敛、能否从诊断转入施工或控制前端 UI 信息密度时） | 细化全局 §2A 诊断→施工切换条件，防止只读调查空转；同时规定前端与 UI 交付密度约束（容器嵌套 ≤3 层、单行卡片 ≤3–4 个、单卡核心指标 ≤3 项，次要参数下沉抽屉）。 |
-| [`rules/LONG-TASKS.md`](./rules/LONG-TASKS.md) | `~/.gemini/config/plugins/anyi-global-rules/rules/LONG-TASKS.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（距上次用户可见正文接近 8 分钟，或长任务卡点/重复失败时） | 细化全局 §4A 长任务阶段可见性（8 分钟墙钟阈值 / 60 次工具调用兜底），规范阶段汇报内容且不打断正常执行。 |
-| [`rules/RELEASE-PACKAGING.md`](./rules/RELEASE-PACKAGING.md) | `~/.gemini/config/plugins/anyi-global-rules/rules/RELEASE-PACKAGING.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（构建、修改或验收 Release / 便携包 / 交付 ZIP 前） | 规定冻结基线定义、完整依赖闭包检查、独立新目录解压实跑验证与五态发布结论。 |
-| [`rules/RULE-MAINTENANCE.md`](./rules/RULE-MAINTENANCE.md) | `~/.gemini/config/plugins/anyi-global-rules/rules/RULE-MAINTENANCE.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（新增、修改或评估本套全局治理规则时） | 细化全局 §14 规则冻结原则：禁止为单一失败样本扩写规则，明确新增条款必须同时满足的三项门槛。 |
-| [`rules/WINDOWS-RELEASE.md`](./rules/WINDOWS-RELEASE.md) | `~/.gemini/config/plugins/anyi-global-rules/rules/WINDOWS-RELEASE.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（制作、修改或验证 Windows 脚本与中文交付物前） | 规范 BAT/CMD 纯 ASCII 编码、中文 TXT UTF-8 BOM 约定，以及启动/关闭脚本用目标解释器实跑验证的要求。 |
+| [`rules/BACKGROUND-RESOURCES.md`](./rules/BACKGROUND-RESOURCES.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/BACKGROUND-RESOURCES.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（创建/管理临时子代理、后台任务、测试服、子进程或拉起桌面 GUI 前） | 规定“谁创建谁负责生命周期”、创建记身份、探针用完即杀、桌面 GUI 脱钩启动、禁止按进程名盲杀用户原有服务，以及活跃施工子代理（≤2–3）与重型编译/渲染子进程并发硬上限（≤1–2）。 |
+| [`rules/IMPLEMENTATION.md`](./rules/IMPLEMENTATION.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/IMPLEMENTATION.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（判断证据是否已收敛、能否从诊断转入施工或控制前端 UI 信息密度时） | 细化全局 §2A 诊断→施工切换条件，防止只读调查空转；同时规定前端与 UI 交付密度约束（容器嵌套 ≤3 层、单行卡片 ≤3–4 个、单卡核心指标 ≤3 项，次要参数下沉抽屉）。 |
+| [`rules/LONG-TASKS.md`](./rules/LONG-TASKS.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/LONG-TASKS.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（距上次用户可见正文接近 8 分钟，或长任务卡点/重复失败时） | 细化全局 §4A 长任务阶段可见性（8 分钟墙钟阈值 / 60 次工具调用兜底），规范阶段汇报内容且不打断正常执行。 |
+| [`rules/RELEASE-PACKAGING.md`](./rules/RELEASE-PACKAGING.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/RELEASE-PACKAGING.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（构建、修改或验收 Release / 便携包 / 交付 ZIP 前） | 规定冻结基线定义、完整依赖闭包检查、独立新目录解压实跑验证与五态发布结论。 |
+| [`rules/RULE-MAINTENANCE.md`](./rules/RULE-MAINTENANCE.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/RULE-MAINTENANCE.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（新增、修改或评估本套全局治理规则时） | 细化全局 §14 规则冻结原则：禁止为单一失败样本扩写规则，明确新增条款必须同时满足的三项门槛。 |
+| [`rules/WINDOWS-RELEASE.md`](./rules/WINDOWS-RELEASE.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/WINDOWS-RELEASE.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（制作、修改或验证 Windows 脚本与中文交付物前） | 规范 BAT/CMD 纯 ASCII 编码、中文 TXT UTF-8 BOM 约定，以及启动/关闭脚本用目标解释器实跑验证的要求。 |
 | [`rules/SEARCH-ROUTING.md`](./rules/SEARCH-ROUTING.md) | `~/.gemini/config/plugins/search-routing/rules/SEARCH-ROUTING.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（涉及时效信息、外部事实核验、库版本状态、官方文档或 URL 读取时） | 决定何时必须用 `search_web` 检索、何时用 `read_url_content` 直取、何时才用 Browser Agent 及失败降级规则。 |
-| [`skills/task-intake/SKILL.md`](./skills/task-intake/SKILL.md) | `~/.gemini/config/plugins/anyi-global-rules/skills/task-intake/SKILL.md` | 按需 Skill (`skills/`) | 多步骤工程开发、复杂排障（`INVESTIGATION_PATH`）、生产变更、触发熔断或输出四态工程回报时 | 承载工程任务内部编译、状态标记总表（原全局 §7A）、只读空转熔断、独立 Review 与四态交付回报（`PASS`/`PASS_WITH_NOTES`/`BLOCKED`/`FAIL`）。 |
+| [`skills/task-intake/SKILL.md`](./skills/task-intake/SKILL.md) | `~/.gemini/config/plugins/antigravity-core-rules/skills/task-intake/SKILL.md` | 按需 Skill (`skills/`) | 多步骤工程开发、复杂排障（`INVESTIGATION_PATH`）、生产变更、触发熔断或输出四态工程回报时 | 承载工程任务内部编译、状态标记总表（原全局 §7A）、只读空转熔断、独立 Review 与四态交付回报（`PASS`/`PASS_WITH_NOTES`/`BLOCKED`/`FAIL`）。 |
 | [`skills/research-routing/SKILL.md`](./skills/research-routing/SKILL.md) | `~/.gemini/config/plugins/search-routing/skills/research-routing/SKILL.md` | 按需 Skill (`skills/`) | 触发 `SEARCH-ROUTING` 且需执行外部检索与多源核验时 | 规定双语查询构造、来源三级分类与交叉验证强度（第三方至少 2 独立源）、官方原文抓取与时效 `as-of` 标注 SOP。 |
-| [`skills/safe-network-diagnostics/SKILL.md`](./skills/safe-network-diagnostics/SKILL.md) | `~/.gemini/config/plugins/anyi-global-rules/skills/safe-network-diagnostics/SKILL.md` | 按需 Skill (`skills/`) | 网络连通性排查、代理状态检查、DNS/端口探测或接口报错诊断时 | 固化跨平台用户代理只读红线，提供 Windows / macOS / Linux 三端只读代理查询、端口监听、DNS/网卡及假性流中断鉴别 SOP。 |
-| [`skills/multi-agent-orchestrator/SKILL.md`](./skills/multi-agent-orchestrator/SKILL.md) | `~/.gemini/config/plugins/anyi-global-rules/skills/multi-agent-orchestrator/SKILL.md` | 按需 Skill (`skills/`) | 子代理分工、`/swarm`（`/teamwork`）并行协作、派 Flash 干只读验证/脏活、跨模块检索、隔离实验或跨端 MCP 协同任务时 | 规范主会话上下文保护、4c/4a 配额与档位分流、`/swarm` 并行互斥写入边界与隔离 worktree 批量修改豁免、并发 Worker 与重型构建子进程硬上限、内部 Subagent 选型及跨端 MCP 协同纪律。 |
+| [`skills/safe-network-diagnostics/SKILL.md`](./skills/safe-network-diagnostics/SKILL.md) | `~/.gemini/config/plugins/antigravity-core-rules/skills/safe-network-diagnostics/SKILL.md` | 按需 Skill (`skills/`) | 网络连通性排查、代理状态检查、DNS/端口探测或接口报错诊断时 | 固化跨平台用户代理只读红线，提供 Windows / macOS / Linux 三端只读代理查询、端口监听、DNS/网卡及假性流中断鉴别 SOP。 |
+| [`skills/multi-agent-orchestrator/SKILL.md`](./skills/multi-agent-orchestrator/SKILL.md) | `~/.gemini/config/plugins/antigravity-core-rules/skills/multi-agent-orchestrator/SKILL.md` | 按需 Skill (`skills/`) | 子代理分工、`/swarm`（`/teamwork`）并行协作、派 Flash 干只读验证/脏活、跨模块检索、隔离实验或跨端 MCP 协同任务时 | 规范主会话上下文保护、4c/4a 配额与档位分流、`/swarm` 并行互斥写入边界与隔离 worktree 批量修改豁免、并发 Worker 与重型构建子进程硬上限、内部 Subagent 选型及跨端 MCP 协同纪律。 |
 | [`skills/client-maintenance/SKILL.md`](./skills/client-maintenance/SKILL.md) | `~/.gemini/antigravity/skills/client-maintenance/SKILL.md`（及可选 `<workspace>/.agents/skills/`） | 按需 Skill (`skills/`) | 清理 Antigravity 缓存、维护客户端存储空间或归档陈旧历史会话时 | 执行 7 天活跃会话与当前会话白名单保护、14 天以上陈旧会话压缩归档至 `_archives/` 并校验、以及临时渲染缓存安全释放。 |
 | [`skills/docx-delivery/`](./skills/docx-delivery/skills/docx-delivery/SKILL.md) | `~/.gemini/config/plugins/docx-delivery/` | 按需 Skill (`skills/`) | 用户要求将 Markdown/文本/报告转换为可编辑的 Word (`.docx`) 成品时 | 提供两条实战验证的转换链（无图版 `md2docx_one.py` / 带图版 `md2docx_img.py`）、防覆盖保护与 `validate_docx.py` 校验；区分既有文本原样转换与 Agent（如 Carbon）撰稿的对外文档交付（转 `.docx` 前默认串联 `humanizer-zh` 或交由 Argon 润色）。 |
-| [`skills/chinese-novelist/`](./skills/chinese-novelist/SKILL.md) | `~/.gemini/antigravity/skills/chinese-novelist/`（及可选 `<workspace>/.agents/skills/`） | 按需 Skill (`skills/`) | 用户要求分章节创作中文中长篇小说（10–50 章）或续写小说项目时 | 与全局规则（§4A 阶段汇报、覆盖前备份、`lieflat-less-ai-tone` 自检、分块 `write_file`）衔接的小说创作入口（上游完整流程与脚本见 [`UPSTREAM.md`](./skills/chinese-novelist/UPSTREAM.md)）。 |
-| [`agents/flash-verifier.md`](./agents/flash-verifier.md) | `~/.gemini/config/plugins/anyi-global-rules/agents/flash-verifier.md` | 按需全局 Subagent (`agents/`) | `invoke_subagent(TypeName="flash-verifier")`（跑只读扫描、核对哈希、筛长日志时委派） | 运行在 Gemini Flash 上的全局只读验证专员定义，强制纯只读、单条回复 ≤40 行、大输出落盘 `scratch/`。 |
-| [`mcp/dsh-bridge/`](./mcp/dsh-bridge/) & [`mcp/agent-bridge/`](./mcp/agent-bridge/) | 按需注册至 Antigravity MCP 配置 | 可选跨端 MCP 桥 (`mcp/`) | 跨端委派外部 CLI Agent（如 DSH Headless）执行只读或开发任务时 | 零依赖 Node.js MCP stdio 桥（`dsh-bridge` 原名 `dsh-crew`，已改名避免与社区 `ZSeven-W/dsh-crew` 冲突并默认 `read-only`，完成 Windows/macOS 适配与真机验证；`agent-bridge` 为通用可插拔桥，通过 32/32 假后端协议自检）。 |
+| [`skills/chinese-novelist/`](./skills/chinese-novelist/SKILL.md) | `~/.gemini/antigravity/skills/chinese-novelist/`（及可选 `<workspace>/.agents/skills/`） | 按需 Skill (`skills/`) | 用户要求分章节创作中文中长篇小说（10–50 章）或续写小说项目时 | 与全局规则（§4A 阶段汇报、覆盖前备份、`lieflat-less-ai-tone` 自检、分块 `write_file`）衔接的小说创作入口（已将子文档链接改为上游 GitHub 完整链接，上游仓库见 [`UPSTREAM.md`](./skills/chinese-novelist/UPSTREAM.md)）。 |
+| [`agents/flash-verifier.md`](./agents/flash-verifier.md) | `~/.gemini/config/plugins/antigravity-core-rules/agents/flash-verifier.md` | 按需全局 Subagent (`agents/`) | `invoke_subagent(TypeName="flash-verifier")`（跑只读扫描、核对哈希、筛长日志时委派） | 运行在 Gemini Flash 上的全局只读验证专员定义，强制纯只读、单条回复 ≤40 行、大输出落盘 `scratch/`。 |
+| [`mcp/dsh-bridge/`](./mcp/dsh-bridge/) & [`mcp/agent-bridge/`](./mcp/agent-bridge/) | 按需注册至 Antigravity MCP 配置 | 可选跨端 MCP 桥 (`mcp/`) | 跨端委派外部 CLI Agent（如 DSH Headless）执行只读或开发任务时 | 零依赖 Node.js MCP stdio 桥（`dsh-bridge` 默认 `read-only` 并完成 Windows/macOS 适配与真机验证；`agy-agent-bridge` 为通用可插拔桥，已加子进程环境变量白名单隔离与状态文件 `0o600` 权限，通过 35/35 假后端协议自检）。 |
 
 </details>
 
@@ -206,7 +207,7 @@ flowchart TD
 
 若需手动选择性部署，请先将文件中 `file:///<YOUR_PATH>/.gemini/...` 链接里的 `<YOUR_PATH>` 替换为你本机的家目录正斜杠路径（或直接使用 `install.ps1` / `./install.sh` 自动替换）。
 
-> 关于 `global/AGENTS.md` 内相对链接的说明：`global/AGENTS.md` 中的 `./IMPLEMENTATION.md`、`../skills/task-intake/SKILL.md` 等相对链接是按部署后的运行目录层级（`~/.gemini/config/plugins/anyi-global-rules/rules/AGENTS.md`）编写的，部署后完全正确；在 GitHub 网页端直接浏览仓库内 `global/AGENTS.md` 时因仓库按层分目录（`global/` 与 `rules/`、`skills/` 分离）点击会打不开，属正常现象。
+> 关于 `global/AGENTS.md` 内相对链接的说明：`global/AGENTS.md` 中的 `./IMPLEMENTATION.md`、`../skills/task-intake/SKILL.md` 等相对链接是按部署后的运行目录层级（`~/.gemini/config/plugins/antigravity-core-rules/rules/AGENTS.md`）编写的，部署后完全正确；在 GitHub 网页端直接浏览仓库内 `global/AGENTS.md` 时因仓库按层分目录（`global/` 与 `rules/`、`skills/` 分离）点击会打不开，属正常现象。
 
 #### 1. 底层硬拦截层（`hooks/`）
 - 目标位置：
@@ -221,25 +222,25 @@ flowchart TD
 #### 2. Always-on 全局规则层（`global/`）
 - 目标位置：
   - `global/GEMINI.md` → 复制到 `~/.gemini/GEMINI.md`
-  - `global/plugin.json` → 复制到 `~/.gemini/config/plugins/anyi-global-rules/plugin.json`
-  - `global/AGENTS.md` → 复制到 `~/.gemini/config/plugins/anyi-global-rules/rules/AGENTS.md`
-  - `global/THINKING-VISIBILITY.md` → 复制到 `~/.gemini/config/plugins/anyi-global-rules/rules/THINKING-VISIBILITY.md`
+  - `global/plugin.json` → 复制到 `~/.gemini/config/plugins/antigravity-core-rules/plugin.json`
+  - `global/AGENTS.md` → 复制到 `~/.gemini/config/plugins/antigravity-core-rules/rules/AGENTS.md`
+  - `global/THINKING-VISIBILITY.md` → 复制到 `~/.gemini/config/plugins/antigravity-core-rules/rules/THINKING-VISIBILITY.md`
 - 启用方式：
   - `~/.gemini/GEMINI.md` 会被 Antigravity / Gemini 自动作为全局最高优 `user_global` 规则注入。
-  - 在 `~/.gemini/config/config.json` 的 `"plugins"` 字段下启用插件 `"anyi-global-rules": { "enabled": true }`。
+  - 在 `~/.gemini/config/config.json` 的 `"plugins"` 字段下启用插件 `"antigravity-core-rules": { "enabled": true }`。
 
 #### 3. 按需 `model_decision` 专项规则层（`rules/`）
 - 目标位置：
-  - `BACKGROUND-RESOURCES.md`、`IMPLEMENTATION.md`、`LONG-TASKS.md`、`RELEASE-PACKAGING.md`、`RULE-MAINTENANCE.md`、`WINDOWS-RELEASE.md` → 放入 `~/.gemini/config/plugins/anyi-global-rules/rules/`
+  - `BACKGROUND-RESOURCES.md`、`IMPLEMENTATION.md`、`LONG-TASKS.md`、`RELEASE-PACKAGING.md`、`RULE-MAINTENANCE.md`、`WINDOWS-RELEASE.md` → 放入 `~/.gemini/config/plugins/antigravity-core-rules/rules/`
   - `SEARCH-ROUTING.md` → 放入 `~/.gemini/config/plugins/search-routing/rules/SEARCH-ROUTING.md`（并将 `rules/search-routing.plugin.json` 命名为 `~/.gemini/config/plugins/search-routing/plugin.json`，在 `config.json` 中设为 `"enabled": true`）
 
 #### 4. 按需 Skill 与全局 Subagent 层（`skills/` & `agents/`）
 - 目标位置：
-  - `task-intake/`、`safe-network-diagnostics/`、`multi-agent-orchestrator/` → 放入 `~/.gemini/config/plugins/anyi-global-rules/skills/`
+  - `task-intake/`、`safe-network-diagnostics/`、`multi-agent-orchestrator/` → 放入 `~/.gemini/config/plugins/antigravity-core-rules/skills/`
   - `research-routing/` → 放入 `~/.gemini/config/plugins/search-routing/skills/research-routing/`
   - `docx-delivery/` → 原样放入 `~/.gemini/config/plugins/docx-delivery/`
   - `client-maintenance/`、`chinese-novelist/` → 可放入工作区 `.agents/skills/` 或全局 `~/.gemini/antigravity/skills/`
-  - `agents/flash-verifier.md` → 放入 `~/.gemini/config/plugins/anyi-global-rules/agents/flash-verifier.md`
+  - `agents/flash-verifier.md` → 放入 `~/.gemini/config/plugins/antigravity-core-rules/agents/flash-verifier.md`
 
 #### 5. 去 AI 味文风层（`tone/`）
 - 目标位置：
@@ -257,12 +258,12 @@ flowchart TD
 - **如果你需要开箱即用的异步多 Worker 池、进度轮询、工作区咨询锁（advisory lock）或多模态支持**：推荐直接使用社区早在 2026 年 8 月就已开源的 **[`ZSeven-W/dsh-crew`](https://github.com/ZSeven-W/dsh-crew)**（MIT License，DSH 插件 + 独立 MCP Server，自带 `node src/install/cli.mjs agy` 安装器），或面向 GUI 客户端 CDP 客观验收闭环的 **[`lanlan0811/tianshu-mcp`](https://github.com/lanlan0811/tianshu-mcp)**（Apache-2.0，`npx -y tianshu-mcp`）。
 - **如果你只想要一个单文件、零依赖、一眼能审完的 `stdio` 同步薄封装**：本仓库 `mcp/` 下提供两座约 500 行的 Node 内建模块脚本桥：
 
-| | [`mcp/dsh-bridge`](./mcp/dsh-bridge/)（原目录名 `dsh-crew`） | [`mcp/agent-bridge`](./mcp/agent-bridge/) |
+| | [`mcp/dsh-bridge`](./mcp/dsh-bridge/)（原目录名 `dsh-crew`） | [`mcp/agent-bridge`](./mcp/agent-bridge/)（注册名 `agy-agent-bridge`） |
 |---|---|---|
-| 后端 | 绑定 DSH（`dsh --profile headless`） | 可插拔（`BRIDGE_CMD` 指谁就是谁） |
-| 注册键名 | `mcpServers['dsh-bridge']`（**不占用/不覆盖** `ZSeven-W/dsh-crew` 的 `mcpServers['dsh-crew']`；仅在旧条目明确指向本仓库已移除的 `mcp/dsh-crew/dsh-crew.mjs` 时自动迁移） | `mcpServers['agent-bridge']` |
+| 后端 | 绑定 DSH（`dsh --profile headless`） | 可插拔（`BRIDGE_CMD` 指谁就是谁；子进程环境变量最小白名单隔离，过滤 `*_KEY`/`*_TOKEN`/`*_SECRET`/`*_PASSWORD`，`sessions.json` 显式 `0o600` 权限） |
+| 注册键名 | `mcpServers['dsh-bridge']`（**不占用/不覆盖** `ZSeven-W/dsh-crew` 的 `mcpServers['dsh-crew']`；仅在旧条目明确指向本仓库已移除的 `mcp/dsh-crew/dsh-crew.mjs` 时自动迁移） | `mcpServers['agy-agent-bridge']`（避免与 `@paulmh/agentbridge-mcp`、`raysonmeng/agent-bridge`、`EthanSK/agent-bridge` 同名冲突） |
 | 工具与默认权限 | `dsh_ask`（**默认 `read-only`**）/ `dsh_sessions` / `dsh_status` / `dsh_forget` | `agent_ask` / `agent_sessions` / `agent_status` / `agent_forget` |
-| 验证状态 | **真机跑通 6/6**（`VERIFIED`），含续聊复用同一 session | 假后端 **32/32** 协议断言，**未接任何真实后端（`NOT_PROVEN`）** |
+| 验证状态 | **真机跑通 6/6**（`VERIFIED`），含续聊复用同一 session | 假后端 **35/35** 协议与安全隔离断言，**未接任何真实后端（`NOT_PROVEN`）** |
 | 来历与重名说明 | 11 月 7 日作者让 DSH 桌面端 Agent 按「把 dsh-crew 机制接入」指令从零生成，初版沿用了社区 `dsh-crew` 名称导致 `mcp_config.json` 键名冲突；自 0.2.0 起改名为 `dsh-bridge` 并恢复对 [`ZSeven-W/dsh-crew`](https://github.com/ZSeven-W/dsh-crew) 的指向 | 作者原创编写 |
 
 - **凭据补丁与第三方模型插件边界（`mcp/dsh-bridge`）**：
@@ -292,14 +293,14 @@ flowchart TD
 1. 宿主操作系统与平台差异：
    - Windows、macOS、Linux 三端均支持全量 5 层部署与卸载（Windows 使用 `install.ps1` + `pretool_guard.ps1`，macOS / Linux 使用 `./install.sh` + `pretool_guard.cjs`）。`rules/WINDOWS-RELEASE.md` 属于按需触发（`trigger: model_decision`）的 Windows 交付物专项规则，在 macOS / Linux 常规开发中不会加载。
 2. Hook 默认决策与离线自检边界：
-   - `pretool_guard.ps1` / `pretool_guard.cjs` 对未命中黑名单命令默认返回 `{"decision":"ask"}`，可在 `pretool_guard_settings.json` 中改为 `allow`。截至 2026-11-11，Antigravity 在线文档（`antigravity.google/docs/hooks`）列有 6 个返回值（`allow` 交还后续 Hook 或宿主默认策略、`auto_approve` 自动批准、`ask` 请求确认、`force_ask` 忽略缓存每次确认、`deny` 硬拒绝、`deny_unless_prior_grant`），而桌面端 `2.31.0` 内置离线 `hooks.md` 仍停留在旧版 4 值表述；`ask` / `allow` / `force_ask` 在各客户端版本宿主侧的实际弹窗行为未逐一验证（`NOT_PROVEN`）。`verify-hook.py` 仅对脚本本体做标准输入回归测试，安装后请按上文说明在客户端内触发一次受控拦截以确认宿主挂载生效。
+   - `pretool_guard.ps1` / `pretool_guard.cjs` 对未命中黑名单命令默认返回 `{"decision":"allow"}`（交回宿主审批策略），可在 `pretool_guard_settings.json` 中按需改为 `ask`。经对照 Antigravity 在线文档（`antigravity.google/docs/hooks`）6 值定义与 Windows 桌面端 `2.31.0` `language_server.exe` 二进制及真机实测（`VERIFIED`）：`allow` 在 Turbo 策略下直接放行、在 Ask-First 策略下交回宿主审批（真正替用户在 Ask-First 下自动批准的是 `auto_approve`），而 `ask` 会强制触发确认弹窗。`force_ask` 在 `/swarm` 后台 Worker 等无人应答场景下的宿主行为尚未逐一验证（`NOT_PROVEN`）。`verify-hook.py` 仅对脚本本体做标准输入回归测试，安装后请按上文说明在客户端内触发一次受控拦截以确认宿主挂载生效。
    - 黑名单仍是正则。`verify-hook.py` 的 `TIER_CORPUS` 末尾列出了当前**不会**被标记的破坏性命令（`git branch -D`、经变量间接调用的 `rm`、`[IO.Directory]::Delete`、`rsync --delete`、`truncate`、`mv` 到别处、`docker system prune`、以及任何脚本文件内部的删除）。
 3. `read_loop_guard.cjs` 的 `enforce` 拦截模式尚未验证（`NOT_PROVEN`）：
    - `read_loop_guard.cjs` 当前默认保持 `"mode": "observe"`（仅在 `PostToolUse` 记录重复读取诊断，不阻断工具调用）；`read_loop_settings.json` 中的三个 Verified 标志均为 `false`，且 `hooks.json` 中 `read-loop-enforcement` 默认为 `"enabled": false`。
 4. 软规则不能替代硬权限：
    - Markdown 规则层（`global/`、`rules/`、`skills/`）本质上是模型行为约束与上下文协议，受限于大模型自身的注意力波动，极端情况下仍可能出现遗漏；高危红线（防强删、防杀代理、防断网）必须配合 `hooks/pretool_guard.ps1`（Windows）或 `hooks/pretool_guard.cjs`（macOS / Linux）进程级硬拦截共同使用。
 5. 第三方引用 Skill 的完整度：
-   - `tone/lieflat-less-ai-tone`、`tone/humanizer-zh` 与 `skills/chinese-novelist` 仅收录了与本套全局规则衔接的 `SKILL.md` 及原项目 MIT `LICENSE`，未打包原仓库的配图、语料统计表与辅助脚本；如需完整资产请按各目录下的 `UPSTREAM.md` 指引从原仓库拉取。
+   - `tone/lieflat-less-ai-tone`、`tone/humanizer-zh` 与 `skills/chinese-novelist` 仅收录了与本套全局规则衔接的 `SKILL.md` 及原项目 MIT `LICENSE`，未打包原仓库的配图、语料统计表与辅助脚本（正文中对原仓库子文件的引用已全部改为上游 GitHub 完整网页链接并注明禁止本地调用文件读取工具查找，安装器亦通过 `.antigravity-rules-managed` 标记保护避免覆盖用户自装的完整版同名目录）；如需完整资产请按各目录下的 `UPSTREAM.md` 指引从原仓库拉取。
 
 ---
 

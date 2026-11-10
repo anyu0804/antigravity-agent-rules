@@ -54,11 +54,27 @@ $PluginsDir  = Join-Path $ConfigDir 'plugins'
 $AgySkillDir = Join-Path (Join-Path $GeminiDir 'antigravity') 'skills'
 
 $Utf8NoBom   = New-Object System.Text.UTF8Encoding($false)
+$ManagedMarkerFile = '.antigravity-rules-managed'
 
 function Ensure-Dir([string]$DirPath) {
     if (-not (Test-Path -LiteralPath $DirPath)) {
         New-Item -ItemType Directory -Path $DirPath -Force | Out-Null
     }
+}
+
+function Test-IsManagedDir([string]$DirPath) {
+    if (-not (Test-Path -LiteralPath $DirPath)) {
+        return $true
+    }
+    $markerPath = Join-Path $DirPath $ManagedMarkerFile
+    return (Test-Path -LiteralPath $markerPath)
+}
+
+function Write-ManagedMarker([string]$DirPath) {
+    Ensure-Dir $DirPath
+    $markerPath = Join-Path $DirPath $ManagedMarkerFile
+    $markerText = "Managed by antigravity-agent-rules. Do not remove this file if you want install/uninstall scripts to manage this directory.`r`n"
+    [System.IO.File]::WriteAllText($markerPath, $markerText, $Utf8NoBom)
 }
 
 Write-Host "======================================================================"
@@ -115,37 +131,56 @@ $repoHooksObj = $repoHooksRaw | ConvertFrom-Json
 # 1. Inspect existing targets and ask for user confirmation ('y')
 # ----------------------------------------------------------------------------
 $ManagedTargets = @(
-    @{ Rel = 'GEMINI.md';                                 Mode = 'MERGE (marker block)' },
-    @{ Rel = 'config\hooks.json';                         Mode = 'MERGE (top-level keys)' },
-    @{ Rel = 'config\config.json';                        Mode = 'MERGE (enable 5 plugins)' },
-    @{ Rel = 'config\scripts\pretool_guard.ps1';          Mode = 'OVERWRITE' },
-    @{ Rel = 'config\scripts\pretool_guard.cjs';          Mode = 'OVERWRITE' },
-    @{ Rel = 'config\scripts\read_loop_guard.cjs';        Mode = 'OVERWRITE' },
-    @{ Rel = 'config\scripts\read_loop_settings.json';    Mode = 'OVERWRITE' },
-    @{ Rel = 'config\scripts\test-cases.txt';             Mode = 'OVERWRITE' },
-    @{ Rel = 'config\scripts\verify-hook.py';             Mode = 'OVERWRITE' },
-    @{ Rel = 'config\plugins\anyi-global-rules';          Mode = 'OVERWRITE' },
-    @{ Rel = 'config\plugins\search-routing';             Mode = 'OVERWRITE' },
-    @{ Rel = 'config\plugins\docx-delivery';              Mode = 'OVERWRITE' },
-    @{ Rel = 'config\plugins\lieflat-less-ai-tone';       Mode = 'OVERWRITE' },
-    @{ Rel = 'config\plugins\humanizer-zh';               Mode = 'OVERWRITE' },
-    @{ Rel = 'antigravity\skills\client-maintenance';     Mode = 'OVERWRITE' },
-    @{ Rel = 'antigravity\skills\chinese-novelist';       Mode = 'OVERWRITE' }
+    @{ Rel = 'GEMINI.md';                                 Mode = 'MERGE (marker block)';      IsDir = $false },
+    @{ Rel = 'config\hooks.json';                         Mode = 'MERGE (top-level keys)';    IsDir = $false },
+    @{ Rel = 'config\config.json';                        Mode = 'MERGE (enable 5 plugins)';  IsDir = $false },
+    @{ Rel = 'config\scripts\pretool_guard.ps1';          Mode = 'OVERWRITE';                 IsDir = $false },
+    @{ Rel = 'config\scripts\pretool_guard.cjs';          Mode = 'OVERWRITE';                 IsDir = $false },
+    @{ Rel = 'config\scripts\read_loop_guard.cjs';        Mode = 'OVERWRITE';                 IsDir = $false },
+    @{ Rel = 'config\scripts\read_loop_settings.json';    Mode = 'OVERWRITE';                 IsDir = $false },
+    @{ Rel = 'config\scripts\test-cases.txt';             Mode = 'OVERWRITE';                 IsDir = $false },
+    @{ Rel = 'config\scripts\verify-hook.py';             Mode = 'OVERWRITE';                 IsDir = $false },
+    @{ Rel = 'config\plugins\antigravity-core-rules';     Mode = 'OVERWRITE (managed)';       IsDir = $true },
+    @{ Rel = 'config\plugins\search-routing';             Mode = 'OVERWRITE (managed)';       IsDir = $true },
+    @{ Rel = 'config\plugins\docx-delivery';              Mode = 'OVERWRITE (managed)';       IsDir = $true },
+    @{ Rel = 'config\plugins\lieflat-less-ai-tone';       Mode = 'OVERWRITE (managed)';       IsDir = $true },
+    @{ Rel = 'config\plugins\humanizer-zh';               Mode = 'OVERWRITE (managed)';       IsDir = $true },
+    @{ Rel = 'antigravity\skills\client-maintenance';     Mode = 'OVERWRITE (managed)';       IsDir = $true },
+    @{ Rel = 'antigravity\skills\chinese-novelist';       Mode = 'OVERWRITE (managed)';       IsDir = $true }
 )
 
 if ($HookOnly) {
     $ManagedTargets = @($ManagedTargets | Where-Object { $_.Rel -like 'config\hooks.json' -or $_.Rel -like 'config\scripts\*' })
 }
 
-$ExistingItems = @()
+$ExistingItems    = @()
+$SkippedUnmanaged = @()
 foreach ($item in $ManagedTargets) {
     $full = Join-Path $GeminiDir $item.Rel
     if (Test-Path -LiteralPath $full) {
-        $ExistingItems += [PSCustomObject]@{
-            Rel  = $item.Rel
-            Full = $full
-            Mode = $item.Mode
+        if ($item.IsDir -and $item.Rel -ne 'config\plugins\antigravity-core-rules' -and (-not (Test-IsManagedDir $full))) {
+            $SkippedUnmanaged += [PSCustomObject]@{
+                Rel  = $item.Rel
+                Full = $full
+                Mode = 'SKIP (unmanaged)'
+            }
+        } else {
+            $ExistingItems += [PSCustomObject]@{
+                Rel  = $item.Rel
+                Full = $full
+                Mode = $item.Mode
+            }
         }
+    }
+}
+
+$LegacyAnyiRel  = 'config\plugins\anyi-global-rules'
+$LegacyAnyiFull = Join-Path $GeminiDir $LegacyAnyiRel
+if ((-not $HookOnly) -and (Test-Path -LiteralPath $LegacyAnyiFull)) {
+    $ExistingItems += [PSCustomObject]@{
+        Rel  = $LegacyAnyiRel
+        Full = $LegacyAnyiFull
+        Mode = 'MIGRATE -> config\plugins\antigravity-core-rules'
     }
 }
 
@@ -158,6 +193,14 @@ if ($ExistingItems.Count -gt 0) {
 } else {
     Write-Host ""
     Write-Host "No existing target files found in '$GeminiDir' (clean install)."
+}
+
+if ($SkippedUnmanaged.Count -gt 0) {
+    Write-Host ""
+    Write-Host "The following existing directories do NOT have '$ManagedMarkerFile' and will be SKIPPED (preserving user/upstream files):"
+    foreach ($sk in $SkippedUnmanaged) {
+        Write-Host ("  [{0}] {1}" -f $sk.Mode, $sk.Full)
+    }
 }
 
 if (-not $Force) {
@@ -183,11 +226,12 @@ foreach ($ex in $ExistingItems) {
 }
 
 $manifestObj = [ordered]@{
-    timestamp     = $stamp
-    targetHome    = $TargetHome
-    workspacePath = $WorkspacePath
-    mode          = $(if ($HookOnly) { 'hook-only' } else { 'full' })
-    preExisting   = @($ExistingItems | ForEach-Object { $_.Rel })
+    timestamp        = $stamp
+    targetHome       = $TargetHome
+    workspacePath    = $WorkspacePath
+    mode             = $(if ($HookOnly) { 'hook-only' } else { 'full' })
+    preExisting      = @($ExistingItems | ForEach-Object { $_.Rel })
+    skippedUnmanaged = @($SkippedUnmanaged | ForEach-Object { $_.Rel })
 }
 $manifestJson = $manifestObj | ConvertTo-Json -Depth 5
 [System.IO.File]::WriteAllText((Join-Path $backupDir 'manifest.json'), ($manifestJson + "`r`n"), $Utf8NoBom)
@@ -289,18 +333,18 @@ if (Test-Path -LiteralPath $TargetGeminiPath) {
 }
 [System.IO.File]::WriteAllText($TargetGeminiPath, $finalGemini, $Utf8NoBom)
 
-$AnyiPluginDir = Join-Path $PluginsDir 'anyi-global-rules'
+$CorePluginDir = Join-Path $PluginsDir 'antigravity-core-rules'
 Copy-WithPlaceholderReplacement `
     -SrcFile (Join-Path $RepoRoot 'global\plugin.json') `
-    -DstFile (Join-Path $AnyiPluginDir 'plugin.json')
+    -DstFile (Join-Path $CorePluginDir 'plugin.json')
 Copy-WithPlaceholderReplacement `
     -SrcFile (Join-Path $RepoRoot 'global\AGENTS.md') `
-    -DstFile (Join-Path $AnyiPluginDir 'rules\AGENTS.md')
+    -DstFile (Join-Path $CorePluginDir 'rules\AGENTS.md')
 Copy-WithPlaceholderReplacement `
     -SrcFile (Join-Path $RepoRoot 'global\THINKING-VISIBILITY.md') `
-    -DstFile (Join-Path $AnyiPluginDir 'rules\THINKING-VISIBILITY.md')
+    -DstFile (Join-Path $CorePluginDir 'rules\THINKING-VISIBILITY.md')
 
-$AnyiRuleFiles = @(
+$CoreRuleFiles = @(
     'BACKGROUND-RESOURCES.md',
     'IMPLEMENTATION.md',
     'LONG-TASKS.md',
@@ -308,72 +352,101 @@ $AnyiRuleFiles = @(
     'RULE-MAINTENANCE.md',
     'WINDOWS-RELEASE.md'
 )
-foreach ($rf in $AnyiRuleFiles) {
+foreach ($rf in $CoreRuleFiles) {
     Copy-WithPlaceholderReplacement `
         -SrcFile (Join-Path (Join-Path $RepoRoot 'rules') $rf) `
-        -DstFile (Join-Path (Join-Path $AnyiPluginDir 'rules') $rf)
+        -DstFile (Join-Path (Join-Path $CorePluginDir 'rules') $rf)
+}
+Write-ManagedMarker $CorePluginDir
+
+# Migrate legacy anyi-global-rules directory if present
+if (Test-Path -LiteralPath $LegacyAnyiFull) {
+    Remove-Item -LiteralPath $LegacyAnyiFull -Recurse -Force
+    Write-Host "  [MIGRATED] Removed legacy plugin directory '$LegacyAnyiFull' -> '$CorePluginDir'"
 }
 
 $SearchPluginDir = Join-Path $PluginsDir 'search-routing'
-Copy-WithPlaceholderReplacement `
-    -SrcFile (Join-Path $RepoRoot 'rules\search-routing.plugin.json') `
-    -DstFile (Join-Path $SearchPluginDir 'plugin.json')
-Copy-WithPlaceholderReplacement `
-    -SrcFile (Join-Path $RepoRoot 'rules\SEARCH-ROUTING.md') `
-    -DstFile (Join-Path $SearchPluginDir 'rules\SEARCH-ROUTING.md')
+$SearchPluginManaged = Test-IsManagedDir $SearchPluginDir
+if ($SearchPluginManaged) {
+    Copy-WithPlaceholderReplacement `
+        -SrcFile (Join-Path $RepoRoot 'rules\search-routing.plugin.json') `
+        -DstFile (Join-Path $SearchPluginDir 'plugin.json')
+    Copy-WithPlaceholderReplacement `
+        -SrcFile (Join-Path $RepoRoot 'rules\SEARCH-ROUTING.md') `
+        -DstFile (Join-Path $SearchPluginDir 'rules\SEARCH-ROUTING.md')
+    Write-ManagedMarker $SearchPluginDir
+} else {
+    Write-Host "  [SKIP (unmanaged)] $SearchPluginDir"
+}
 
 Write-Host "[3/5] Merged GEMINI.md & deployed Layer 2 (global/) + Layer 3 (rules/)."
 
 # ----------------------------------------------------------------------------
 # 5. Deploy Layer 4 & 5: skills/, agents/, and tone/
 # ----------------------------------------------------------------------------
-$AnyiSkills = @('task-intake', 'safe-network-diagnostics', 'multi-agent-orchestrator')
-foreach ($sk in $AnyiSkills) {
+$CoreSkills = @('task-intake', 'safe-network-diagnostics', 'multi-agent-orchestrator')
+foreach ($sk in $CoreSkills) {
     Copy-TreeWithReplacement `
         -SrcDir (Join-Path (Join-Path $RepoRoot 'skills') $sk) `
-        -DstDir (Join-Path (Join-Path $AnyiPluginDir 'skills') $sk)
+        -DstDir (Join-Path (Join-Path $CorePluginDir 'skills') $sk)
 }
 
 Copy-WithPlaceholderReplacement `
     -SrcFile (Join-Path $RepoRoot 'agents\flash-verifier.md') `
-    -DstFile (Join-Path $AnyiPluginDir 'agents\flash-verifier.md')
+    -DstFile (Join-Path $CorePluginDir 'agents\flash-verifier.md')
 
-Copy-TreeWithReplacement `
-    -SrcDir (Join-Path $RepoRoot 'skills\research-routing') `
-    -DstDir (Join-Path $SearchPluginDir 'skills\research-routing')
+if ($SearchPluginManaged) {
+    Copy-TreeWithReplacement `
+        -SrcDir (Join-Path $RepoRoot 'skills\research-routing') `
+        -DstDir (Join-Path $SearchPluginDir 'skills\research-routing')
+}
 
-Copy-TreeWithReplacement `
-    -SrcDir (Join-Path $RepoRoot 'skills\docx-delivery') `
-    -DstDir (Join-Path $PluginsDir 'docx-delivery')
-
-Copy-TreeWithReplacement `
-    -SrcDir (Join-Path $RepoRoot 'tone\lieflat-less-ai-tone') `
-    -DstDir (Join-Path $PluginsDir 'lieflat-less-ai-tone')
-
-Copy-TreeWithReplacement `
-    -SrcDir (Join-Path $RepoRoot 'tone\humanizer-zh') `
-    -DstDir (Join-Path $PluginsDir 'humanizer-zh')
+$OptionalPlugins = @(
+    @{ Name = 'docx-delivery';        Src = (Join-Path $RepoRoot 'skills\docx-delivery') },
+    @{ Name = 'lieflat-less-ai-tone'; Src = (Join-Path $RepoRoot 'tone\lieflat-less-ai-tone') },
+    @{ Name = 'humanizer-zh';         Src = (Join-Path $RepoRoot 'tone\humanizer-zh') }
+)
+foreach ($op in $OptionalPlugins) {
+    $opDst = Join-Path $PluginsDir $op.Name
+    if (Test-IsManagedDir $opDst) {
+        Copy-TreeWithReplacement -SrcDir $op.Src -DstDir $opDst
+        Write-ManagedMarker $opDst
+    } else {
+        Write-Host "  [SKIP (unmanaged)] $opDst"
+    }
+}
 
 $StandaloneSkills = @('client-maintenance', 'chinese-novelist')
 foreach ($ssk in $StandaloneSkills) {
-    Copy-TreeWithReplacement `
-        -SrcDir (Join-Path (Join-Path $RepoRoot 'skills') $ssk) `
-        -DstDir (Join-Path $AgySkillDir $ssk)
-    if (-not [string]::IsNullOrWhiteSpace($WorkspacePath)) {
-        $wsSkillDir = Join-Path (Join-Path (Join-Path $WorkspacePath '.agents') 'skills') $ssk
+    $sskDst = Join-Path $AgySkillDir $ssk
+    if (Test-IsManagedDir $sskDst) {
         Copy-TreeWithReplacement `
             -SrcDir (Join-Path (Join-Path $RepoRoot 'skills') $ssk) `
-            -DstDir $wsSkillDir
+            -DstDir $sskDst
+        Write-ManagedMarker $sskDst
+    } else {
+        Write-Host "  [SKIP (unmanaged)] $sskDst"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($WorkspacePath)) {
+        $wsSkillDir = Join-Path (Join-Path (Join-Path $WorkspacePath '.agents') 'skills') $ssk
+        if (Test-IsManagedDir $wsSkillDir) {
+            Copy-TreeWithReplacement `
+                -SrcDir (Join-Path (Join-Path $RepoRoot 'skills') $ssk) `
+                -DstDir $wsSkillDir
+            Write-ManagedMarker $wsSkillDir
+        } else {
+            Write-Host "  [SKIP (unmanaged)] $wsSkillDir"
+        }
     }
 }
 
 Write-Host "[4/5] Deployed Layer 4 (skills/ & agents/) & Layer 5 (tone/)."
 
 # ----------------------------------------------------------------------------
-# 6. Enable 5 plugins in ~/.gemini/config/config.json
+# 6. Enable 5 plugins in ~/.gemini/config/config.json (migrate legacy key)
 # ----------------------------------------------------------------------------
 $PluginNames = @(
-    'anyi-global-rules',
+    'antigravity-core-rules',
     'search-routing',
     'docx-delivery',
     'lieflat-less-ai-tone',
@@ -385,6 +458,9 @@ if ($null -eq $cfgObj) {
 }
 if ($null -eq $cfgObj.PSObject.Properties['plugins']) {
     $cfgObj | Add-Member -MemberType NoteProperty -Name 'plugins' -Value (New-Object PSObject)
+}
+if ($null -ne $cfgObj.plugins.PSObject.Properties['anyi-global-rules']) {
+    $cfgObj.plugins.PSObject.Properties.Remove('anyi-global-rules')
 }
 foreach ($pName in $PluginNames) {
     if ($null -eq $cfgObj.plugins.PSObject.Properties[$pName]) {

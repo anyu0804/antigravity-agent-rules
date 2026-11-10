@@ -87,7 +87,7 @@ description: 用于创作或润色中文文章、文案、故事及其他需要�
 | 比喻本身、比喻独立成段 | 人类用得比 AI 多。只处理理想化拟人喻体，见第 7 条 |
 | 抽象名词配具体动词 | “时间替他保管了细节”“焦虑显出形状”这类两边都几乎不写 |
 
-规则的依据是触发标记可定位，不是频率高低。各条规则的实测数据、被推翻的预设和测量脚本见 [RESEARCH.md](https://github.com/larashero3-dotcom/lieflat-less-ai-tone/blob/27d29232f10124db904ca9c0536d0b67cb3b2833/RESEARCH.md)。
+规则的依据是触发标记可定位，不是频率高低。各条规则的实测数据、被推翻的预设和测量脚本见上游仓库 [RESEARCH.md](https://github.com/larashero3-dotcom/lieflat-less-ai-tone/blob/27d29232f10124db904ca9c0536d0b67cb3b2833/RESEARCH.md)（注：本精简包仅含本 `SKILL.md`，不含本地 `RESEARCH.md` 与 `scripts/` 子文件，请勿调用文件读取工具在插件目录内查找）。
 
 同一特征在不同模型上量级差很大，破折号在某些模型是人类的五倍，在另一些几乎不用。不要按“某个模型的味”去套判断，只按触发标记逐句认。
 

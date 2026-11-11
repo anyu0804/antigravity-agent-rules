@@ -4,7 +4,7 @@
 
 重度用 Agent 写代码或排障时，常会遇到它自作主张闯祸：诊断网络报错时顺手误杀本地代理软件、停掉 TUN 虚拟网卡服务或篡改系统代理注册表导致直接断网，或者误执行 `rm -rf`、`git reset --hard` 把未提交的代码抹掉。光在提示词里写“不许删文件、不许动代理”并不稳，上下文一长模型就会忘。这套配置把高危命令放到进程级 Hook 里硬拦，再把常驻规则、专项规则、文风和执行协议按层拆开按需加载。
 
-除了防误删和防断网，它也管住另外几类常见毛病：根因确认后还反复读同一段代码不肯动刀，普通问答硬套故障排查模板或顺手改无关代码，拿示意图和伪代码冒充成品交差，只跑通一条静态路径就报全量验证通过（混淆 `VERIFIED` 与 `NOT_PROVEN`），随手拉起后台进程挂死终端或拿上千行构建日志刷爆主会话，在文档和脚本里带出 `C:\Users\<用户名>\...` 本机路径，以及写中文时满篇套话和翻译腔。
+除了防误删和防断网，它也管住另外几类常见毛病：根因确认后还反复读同一段代码不肯动刀，普通问答硬套故障排查模板或顺手改无关代码，对接第三方宿主前不看对方源码就凭印象盲写，改完前端 UI 不启动截图核对就交差，拿示意图和伪代码冒充成品，只跑通离线单测或静态路径就报全量验证通过（混淆 `VERIFIED` 与 `NOT_PROVEN`），随手拉起后台进程挂死终端或拿上千行构建日志刷爆主会话，在文档和脚本里带出 `C:\Users\<用户名>\...` 本机路径，以及写中文时满篇套话和翻译腔。
 
 > 历史溯源：首版最早发在百度贴吧谷歌gemini吧（2026-09-29），之后由安钰与共创者 [len (LEN5010)](https://github.com/LEN5010) 在日常工程和跨平台实践中不断迭代定型。感谢 [LINUX DO 社区](https://linux.do/) 的开源交流氛围与佬友支持。
 
@@ -156,8 +156,8 @@ flowchart TD
 
 - `hooks/`（硬拦截层）：在工具调用前后由宿主直接调用，不占模型上下文 Token。`pretool_guard.ps1`（Windows）与 `pretool_guard.cjs`（macOS / Linux）在进程级拦住强删、丢代码和杀代理断网命令（非黑名单默认返回 `allow` 交回宿主审批策略，审计日志仅记拦截项并自动脱敏密钥），`read_loop_guard.cjs` 在 `observe` 模式下记录重复读同一文件区间的死循环。
 - `global/`（Always-on 常驻底座）：只有 `GEMINI.md`、`AGENTS.md` 和 `THINKING-VISIBILITY.md` 三个文件常驻，共约 100 行。规定防开盒与路径脱敏、代理只读红线、按平台分流的 Shell 偏好（Windows 用 Git Bash / `pwsh` 7，macOS / Linux 用原生 `zsh` / `bash`）、主会话工具调用前显式说明排查脉络（后台并行子代理与纯正文创作/前端 Sidecar 同步协议豁免）、动作分级（含 `branch`/`share` 隔离 worktree 未合入主分支前批量修改豁免）、`FAST_PATH` / `INVESTIGATION_PATH` 切换、证据分级（`VERIFIED` / `NOT_PROVEN` / `HYPOTHESIS`）以及专项规则路由。
-- `rules/`（按需条件规则层）：带 `trigger: model_decision`，平时只向模型暴露一行触发条件描述。仅在涉及后台进程与 GUI 脱钩、诊断转施工判断、8 分钟长任务阶段汇报、打包发布、Windows 脚本编码或外部联网检索时按需加载。
-- `skills/` 与 `agents/`（按需执行协议与子代理层）：存放多步骤工程状态机与四态回报（`task-intake`）、多源检索（`research-routing`）、只读网络排查（`safe-network-diagnostics`）、多代理与 `/swarm` 并行编排（`multi-agent-orchestrator`）、客户端缓存归档（`client-maintenance`）、Word 转换校验（`docx-delivery`）和小说创作（`chinese-novelist`）等标准作业程序，同时提供运行在 Gemini Flash 上的全局只读验证子代理 `flash-verifier.md` 来隔离长日志与哈希扫描脏活。
+- `rules/`（按需条件规则层）：带 `trigger: model_decision`，平时只向模型暴露一行触发条件描述。仅在涉及后台进程与 GUI 脱钩、诊断转施工判断与前端 UI 截图验收、8 分钟长任务阶段汇报、打包发布、Windows 脚本编码或外部联网检索时按需加载。
+- `skills/` 与 `agents/`（按需执行协议与子代理层）：存放多步骤工程状态机、第三方源码核实、外部宿主集成验收先行（`ACCEPTANCE.md`）、异构模型复核与四态回报（`task-intake`），多源检索（`research-routing`），只读网络排查（`safe-network-diagnostics`），多代理分档并发与 `/swarm` 并行编排（`multi-agent-orchestrator`），客户端缓存归档（`client-maintenance`），Word 转换校验（`docx-delivery`）和小说创作（`chinese-novelist`）等标准作业程序，同时提供运行在 Gemini Flash 上的全局只读验证子代理 `flash-verifier.md` 来隔离长日志与哈希扫描脏活。
 - `tone/`（按需文风层）：包含 `lieflat-less-ai-tone`（基于 283 万字语料统计的 11 条去 AI 味写作规范）和 `humanizer-zh`（去除空话、重复与模板腔）。平时问答与写代码不加载，只在创作或润色中文文章及用户点名去 AI 味时读取。
 
 ---
@@ -183,7 +183,7 @@ flowchart TD
 | [`global/THINKING-VISIBILITY.md`](./global/THINKING-VISIBILITY.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/THINKING-VISIBILITY.md` | Always-on 全局规则 (`global/`) | `trigger: always_on` | 按运行模式区分思考可见性：主会话交互保留每次工具调用前 1–2 句前置判断；对 `/swarm` 并行执行 worker、`flash-verifier`、`research` 等后台子代理，以及明确要求仅输出成稿正文/沉浸式对白的创作类 Skill（如 `chinese-novelist`）或前端 Sidecar 同步协议免除逐次工具前置播报（安全、隐私与数据保护红线照常生效）。 |
 | [`tone/lieflat-less-ai-tone/`](./tone/lieflat-less-ai-tone/skills/lieflat-less-ai-tone/SKILL.md) | `~/.gemini/config/plugins/lieflat-less-ai-tone/` | 文风层 (`tone/`) | 按需加载（创作或润色中文文章/文案/故事、或明确要求去 AI 味时；普通问答不加载） | 基于 283 万字语料统计的 11 条去 AI 味写作规范（与全局规则衔接版），清除宏大拔高、三连排比、翻译腔与连接词泛滥，严守事实与结构守恒（已将引用链接指向上游 GitHub 网页，上游完整仓库见 [`UPSTREAM.md`](./tone/lieflat-less-ai-tone/UPSTREAM.md)）。 |
 | [`tone/humanizer-zh/`](./tone/humanizer-zh/skills/humanizer-zh/SKILL.md) | `~/.gemini/config/plugins/humanizer-zh/` | 文风层 (`tone/`) | 按需加载（编辑或审阅已有中文文章/评论/文档、去除空话与模板化表达时） | 消除已有中文文本的空话、重复与模板腔，严格保留原文事实、确定程度与作者声音（上游仓库见 [`UPSTREAM.md`](./tone/humanizer-zh/UPSTREAM.md)）。 |
-| [`rules/BACKGROUND-RESOURCES.md`](./rules/BACKGROUND-RESOURCES.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/BACKGROUND-RESOURCES.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（创建/管理临时子代理、后台任务、测试服、子进程或拉起桌面 GUI 前） | 规定“谁创建谁负责生命周期”、创建记身份、探针用完即杀、桌面 GUI 脱钩启动、禁止按进程名盲杀用户原有服务，以及活跃施工子代理（≤2–3）与重型编译/渲染子进程并发硬上限（≤1–2）。 |
+| [`rules/BACKGROUND-RESOURCES.md`](./rules/BACKGROUND-RESOURCES.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/BACKGROUND-RESOURCES.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（创建/管理临时子代理、后台任务、测试服、子进程或拉起桌面 GUI 前） | 规定“谁创建谁负责生命周期”、创建记身份、探针用完即杀、桌面 GUI 脱钩启动、禁止按进程名盲杀用户原有服务，以及重型编译/渲染子进程并发硬上限（≤1–2；子代理分档上限统一归口 `multi-agent-orchestrator` §2.1）。 |
 | [`rules/IMPLEMENTATION.md`](./rules/IMPLEMENTATION.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/IMPLEMENTATION.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（判断证据是否已收敛、能否从诊断转入施工或控制前端 UI 信息密度时） | 细化全局 §2A 诊断→施工切换条件，防止只读调查空转；同时规定前端与 UI 交付密度约束（容器嵌套 ≤3 层、单行卡片 ≤3–4 个、单卡核心指标 ≤3 项，次要参数下沉抽屉），UI 改动须启动后截图核对再交付。 |
 | [`rules/LONG-TASKS.md`](./rules/LONG-TASKS.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/LONG-TASKS.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（距上次用户可见正文接近 8 分钟，或长任务卡点/重复失败时） | 细化全局 §4A 长任务阶段可见性（8 分钟墙钟阈值 / 60 次工具调用兜底），规范阶段汇报内容且不打断正常执行。 |
 | [`rules/RELEASE-PACKAGING.md`](./rules/RELEASE-PACKAGING.md) | `~/.gemini/config/plugins/antigravity-core-rules/rules/RELEASE-PACKAGING.md` | 按需 model-decision 规则 (`rules/`) | `trigger: model_decision`（构建、修改或验收 Release / 便携包 / 交付 ZIP 前） | 规定冻结基线定义、完整依赖闭包检查、独立新目录解压实跑验证与五态发布结论。 |

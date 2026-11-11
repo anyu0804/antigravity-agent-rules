@@ -46,7 +46,10 @@ description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /te
    - 并行启动多个带写权限的施工代理时，派单提示词中**必须显式声明各自允许修改的目录或文件白名单**，严禁两个并行代理同时修改同一文件或共享全局配置；
    - 优先配合 `Workspace: "share"` 或 `"branch"` 隔离 Git worktree：根据全局规则 §1 豁免条款，运行在 `branch` / `share` 隔离工作树内且尚未合入主分支的 Worker，允许在授权白名单内直接执行多文件批量修改（≥5 个文件），无需逐次停下等待用户确认，统一留在 Verifier 终审与合入主分支前由用户一次性拍板。
 3. **并发度与本机资源硬上限（防 CPU/内存打满）**：
-   - **活跃 Worker 并发上限**：单次 `/swarm` 或并行 `invoke_subagent` 同时处于活跃执行态（`working`）的子代理不超过 **3–4 个**（其中带写权限或构建任务的 `share`/`branch` 施工 Worker 同刻不超过 **2–3 个**）。
+   - **活跃代理分档上限**（代理数量只在本节规定；本机重型子进程上限见 [`BACKGROUND-RESOURCES.md`](../../rules/BACKGROUND-RESOURCES.md)）：
+     - 带写权限或构建任务的 `share`/`branch` 施工 Worker：同刻不超过 **2–3 个**；
+     - 只读调研、代码审查、截图评审等不写文件、不拉起重型子进程的代理：不占施工名额，同刻不超过 **6 个**；
+     - 用户在当前任务中明确授权“放开并发 / 不计配额”时，解除代理数量上限，但重型子进程上限与互斥写入作用域照常执行。
    - **重型编译/渲染子进程硬上限（全局 ≤2，同目录/独占锁 = 1）**：严禁多个并行 Worker 各自同时拉起全量编译、打包、渲染或大并发测试子进程（如 `tsc`、`vite build`、`webpack`、`cargo`、`gradle`、全量 `pytest`/`vitest`、Electron / Headless 浏览器实例、asar 打包）。Worker 阶段仅限单文件语法/局部单测自检，全量构建与端到端测试统一收归 Coordinator 或单一 Verifier 在合入阶段串行执行（见 [`BACKGROUND-RESOURCES.md`](../../rules/BACKGROUND-RESOURCES.md)）。
    - **思考可见性静默豁免**：并行 Worker 与 `flash-verifier` 适用 [`THINKING-VISIBILITY.md`](../../global/THINKING-VISIBILITY.md) 豁免，免除逐次工具调用前的前置播报以降低高单价输出开销与看板噪音。
 4. **诚实阻塞透传**：

@@ -288,6 +288,43 @@ flowchart TD
 
 ---
 
+## 官方原生 Orchestrator 与 `/swarm` 和本仓库的定位区别（互补而非替代）
+
+随着 Google Antigravity 推出 [Gemini 4 Hydrogen 与 Orchestrator](https://antigravity.google/blog/gemini-4-hydrogen-in-google-antigravity/) 以及 [Gemini 4 Carbon 与 `/swarm`](https://antigravity.google/blog/gemini-4-carbon-in-google-antigravity/)，IDE 原生具备了在 Gemini 4 系列内部动态切分「规划与执行」的能力。**本仓库与官方新特性是互补关系，而非替代关系**：官方 Orchestrator 管「模型怎么省流切分」，本仓库管「Agent 在 Windows 真机上怎么不闯祸、上下文怎么分层、跨生态怎么交接」。
+
+| 对比维度 | 官方原生 [Orchestrator](https://antigravity.google/blog/gemini-4-hydrogen-in-google-antigravity/) & [`/swarm`](https://antigravity.google/blog/gemini-4-carbon-in-google-antigravity/) | 本仓库 `antigravity-agent-rules`（`GEMINI.md` / `AGENTS.md` / `dsh-bridge`） |
+| :--- | :--- | :--- |
+| **核心职责** | 在单会话内由 [Gemini 4 Carbon](https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-4-carbon-now-available/) 负责只读探索与规划，把常规改码与测试动态分流给 [Gemini 4 Hydrogen](https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-hydrogen/) 执行（官方实测平均省 24% 配额、提速 19%）。 | 提供 Windows 本地环境防坑规范、绕过 24KB 限制的分层规则注入、Hooks 权限拦截审计，以及跨模型工程交接契约。 |
+| **模型覆盖范围** | 仅限 Google 原生 Gemini 4 Carbon 与 Hydrogen 内部协同。 | 支持通过 `dsh-bridge` / [`ZSeven-W/dsh-crew`](https://github.com/ZSeven-W/dsh-crew) MCP 跨生态调度 Gemini 4、Claude、Codex、DeepSeek 等异构 Headless Agent。 |
+| **环境与安全护栏** | 依赖 IDE 默认沙箱策略（[Google Antigravity 特性说明](https://antigravity.google/docs/features/)）。 | 强制约束 Windows 路径与编码兼容、PowerShell 命令防呆、Git Worktree 隔离规范与敏感操作拦截。 |
+
+### 推荐搭配方式
+
+- **日常单会话开发（推荐 Google AI Ultra 用户）**：直接在模型下拉菜单勾选 **Orchestrator**，并挂载本仓库的 `global/GEMINI.md` 与 Hooks。由官方 Orchestrator 自动完成 Carbon 与 Hydrogen 的省流切换，由本仓库保障 Windows 终端兼容与代码规范。
+- **跨模型异构编排 / 复杂多 Worktree 流水线**：需要调用外部 Claude / Codex / DeepSeek 协同验证，或执行严格的自定义多 Worktree 验收流程时，启用本仓库的 `global/AGENTS.md` + `dsh-bridge` MCP（或开箱即用的社区版 [`ZSeven-W/dsh-crew`](https://github.com/ZSeven-W/dsh-crew)，可将轻量执行节点默认后端升级为 Gemini 4 Hydrogen）。
+
+> 以上搭配结论引自官方发布说明，本机尚未对「Orchestrator + 本仓库规则」组合做长周期实测（`NOT_PROVEN`）；Gemini 4 Carbon 的适配现状见上节。
+
+<details>
+<summary>点击展开：English version</summary>
+
+With the release of [Gemini 4 Hydrogen and Orchestrator](https://antigravity.google/blog/gemini-4-hydrogen-in-google-antigravity/) alongside [Gemini 4 Carbon and `/swarm`](https://antigravity.google/blog/gemini-4-carbon-in-google-antigravity/), Google Antigravity now provides built-in multi-model routing within the Gemini 4 family. **`antigravity-agent-rules` is designed to complement—not conflict with—these native capabilities.**
+
+| Dimension | Native Orchestrator & `/swarm` | `antigravity-agent-rules` (`GEMINI.md` / `AGENTS.md` / `dsh-bridge`) |
+| :--- | :--- | :--- |
+| **Core Focus** | Dynamic intra-session model switching between [Gemini 4 Carbon](https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-4-carbon-now-available/) (planning) and [Gemini 4 Hydrogen](https://blog.google/innovation-and-ai/models-and-research/gemini-models/introducing-gemini-4-hydrogen/) (execution), saving ~24% quota and running ~19% faster on Terminal-Bench 4.1. | Windows-tailored engineering guardrails, 24KB layered context injection, Hook-based permission auditing, and cross-provider headless orchestration. |
+| **Model Ecosystem** | Exclusively within Google's native Gemini 4 Carbon and Hydrogen pipeline. | Cross-ecosystem orchestration across Gemini 4, Claude, Codex, and DeepSeek via `dsh-bridge` / [`ZSeven-W/dsh-crew`](https://github.com/ZSeven-W/dsh-crew) MCP and structured handoff contracts. |
+| **Safety & OS Guardrails** | Relies on default IDE sandbox behavior ([Google Antigravity Docs](https://antigravity.google/docs/features/)). | Enforces Windows path/encoding rules, PowerShell safety checks, git worktree isolation, and Hook-level command interception. |
+
+#### Recommended Workflows
+
+* **Daily Single-Session Development (Recommended for Google AI Ultra)**: Select **Orchestrator** in the Antigravity model selector and load `global/GEMINI.md` + Hooks from this repository. Let native Orchestrator handle Carbon-to-Hydrogen step offloading while this repository enforces Windows terminal safety, coding standards, and context hygiene.
+* **Cross-Model & Multi-Worktree Engineering Pipelines**: Enable `global/AGENTS.md` + `dsh-bridge` MCP (or the community [`ZSeven-W/dsh-crew`](https://github.com/ZSeven-W/dsh-crew)) when dispatching tasks to external headless agents (Claude, Codex, DeepSeek) or enforcing strict multi-worktree verification rules beyond native Gemini 4 Hydrogen worker loops.
+
+</details>
+
+---
+
 ## 已知限制
 
 1. 宿主操作系统与平台差异：

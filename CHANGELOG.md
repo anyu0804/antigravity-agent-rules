@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.3.6] - 2026-11-16
+
+针对 2026 年 11 月中旬 Google AI 开发者论坛实证的 **Gemini 4（Carbon / Hydrogen / Argon）6 类底层工程与流式解码缺陷**，在保持常驻底座（`global/AGENTS.md` 与 `global/THINKING-VISIBILITY.md`）冻结的前提下，精准加固按需规则、子代理与 MCP 桥接说明（`global/plugin.json` 升至 `1.3.6`）：
+
+- **防带工具轮次零思考盲猜与防作弊硬门禁（`rules/IMPLEMENTATION.md`、`skills/task-intake/SKILL.md`、`agents/flash-verifier.md`）**：
+  - 新增「证据前置与防作弊硬门禁」：当前会话未通过真实读取/检索工具打开目标源码前严禁给出根因定论或修改方案；完成总结引用的所有导出符号与 `#Lxx` 行号必须经磁盘 `grep` 或动态加载验证存在；测试严禁使用 `|| 0` 恒真兜底断言、空 `.catch(() => {})` 吞错、篡改审计基线或对被测服务使用 `route.fulfill` 假造 200 响应。
+  - 在 `task-intake` §7 补充同源 Gemini 4 家族子代理自审盲区（Same-Family Auditor Blindness）防护：Critical/High 风险优先经宿主切换或 MCP 桥走跨厂商异构复核，若用同族只读专员核查则强制执行符号 grep 与反作弊扫描。
+- **Hydrogen 安全过滤器脱敏与隐式前缀缓存保护（`skills/safe-network-diagnostics/SKILL.md`、`skills/client-maintenance/SKILL.md`、`agents/flash-verifier.md`、`skills/multi-agent-orchestrator/SKILL.md`）**：
+  - 在 `Gemini 4 Hydrogen` 下使用中性工程动词（`skip` 替 `bypass`、`apply update/fix` 替 `patch`、`inspect` 替 `probe`），避免与十六进制地址/偏移同屏触发误拦；命中误拦严禁在原消息下原地“重试”，改为直接编辑原消息或切换至 `Gemini 4 Argon` / `Carbon`。
+  - 避免频繁冷启动携带超大 `systemInstruction` 的一次性短命 4H 子任务（单字差异即丢失隐式前缀缓存复用），改为同会话合并批处理或 `send_message` 复用存活子代理。
+- **5m0s 流空闲超时、256K 压缩防损与假性断网鉴别（`rules/LONG-TASKS.md`、`skills/safe-network-diagnostics/SKILL.md`）**：
+  - 保留 §4A 8 分钟多步阶段汇报基准，新增 §4B（单步限改 1–2 个文件、3 分钟内有工具/增量落盘落地，防撞 `5m0s` 空闲重试假死）与 §4C（未解锁标准客户端近 180K tokens 主动写交接开新窗，防撞 256K 自动压缩线）。
+  - 在 `safe-network-diagnostics` §2.5 补充 `stream idle timeout (5m0s): context deadline exceeded` 服务端晚高峰重试鉴别，严禁误判本地代理断连。
+- **无头 CLI 死锁、流式 STOP 帧错乱与解码边界清洗（`skills/multi-agent-orchestrator/SKILL.md`、`mcp/agent-bridge/README.md`、`mcp/dsh-bridge/README.md`、`skills/chinese-novelist/SKILL.md`）**：
+  - 桥接 `agy --output-format stream-json` 禁在 Plan Mode 跑不触发 `exit_plan_mode` 的纯聊天（防挂死 300s 看门狗），短任务建议 `timeout_ms < 300000`；解析原生 Gemini 4 SSE 时只锁首个非空 chunk 的 `modelVersion`（忽略 STOP 帧偶发突变为 `3.1-flash-lite-*`），自建 REST 端须清理已忽略的 `temperature`/`top_p`/`top_k` 并过滤 0-token 空 `thought` 块。
+  - `chinese-novelist` 新增 `$]` 误触 EOS 双回复与 `</thought>` 残片上下文污染裁除规则。
+- **验证状态**：仓库脱敏扫描及 Hook（PS 194/194、Node 242/242）、MCP 桥离线自检（35/35、7/7）已复核（`VERIFIED`）；新增软规则在跨会话极端负载下的实际规避率尚未长期统计（`NOT_PROVEN`）。
+
 ## [1.3.5] - 2026-11-14
 
 将只读验证与异构模型复核专员标准全面切换至 **`Gemini 4 Hydrogen`**（默认思考档 `gemini-4-hydrogen-high`，淘汰 `Gemini 3.8 Flash / 3.8f`），并基于宿主二进制与轨迹元数据实测修正路由方式（`global/THINKING-VISIBILITY.md` 与 `global/AGENTS.md` 保持冻结未改动）：

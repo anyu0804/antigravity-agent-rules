@@ -136,3 +136,4 @@ node mcp/agent-bridge/verify.mjs
 3. **会话续聊取决于后端**：桥只负责把 `{{session}}` 展开并记下来，后端不认就退化成每次全新会话。
 4. **Windows 优先**：`.cmd/.bat` 的 shell 判定、UTF-8 写出都按 Windows 实测过；Linux/macOS 理论上可用（`useShell` 恒为 false，直接 exec），但**未实测**，标 `NOT_PROVEN`。
 5. **只做单向派活**：不解析后端的工具调用、不支持中途插话、不支持流式回传。要这些请用成熟插件。
+6. **对接 `agy stream-json` 与 Gemini 4 流式后端防坑**：若后端配置为 `agy --output-format stream-json`，切勿在 Plan Mode 下派发不触发 `exit_plan_mode` 的纯聊天问答（无头流会因缺少终态 `result` 挂起满 300s 看门狗），且建议将单次探针/短任务 `timeout_ms` 设在 `300000` 以内（如 `240000`）；若后端脚本统计 Gemini 4 Carbon 原生 SSE 的 `modelVersion`，请锁定首个非空 chunk 并忽略 STOP 结束帧偶发突变为 `3.1-flash-lite-*` 的元数据异常。

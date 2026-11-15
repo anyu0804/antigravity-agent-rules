@@ -48,6 +48,7 @@ dsh --profile headless [--patch <凭据补丁>] [--patch <模型补丁>] --json 
   - **合规提示**：公开可见的 `dsh-commandcode` 同类 provider 插件属于非官方第三方插件，本仓库未核实其是否符合对应服务商（Command Code）的服务条款，请使用者在显式开启前自行核实。
 - **启动器级选项顺序**：`--profile` / `--patch` 必须排在 app 参数（`--json` 等）之前，否则 headless 报 `unknown option '--patch'`。
 - **dsh 版本要求**：headless 需要支持 `--json` / `--session-id` / `--permission-mode` / `--approval-policy`。实测 npm 版 `@deepseek-ai/dsh@0.2.2-rc.1` 支持，`0.1.5-rc.2` 不支持。`dsh_status` 的 `headless_cli` 项会用 `dsh --profile headless --help` 检查（不跑任务、不花 token）。
+- **Gemini 4 Carbon 流式 STOP 帧元数据注意**：直连或经 DSH 观测 `gemini-4-carbon` 流式接口时，同一 `responseId` 首帧为 `gemini-4-carbon`，但末尾 STOP 帧的 `modelVersion` 偶发突变为 `3.1-flash-lite-05-2026`（原生 HTTPS 可复现的元数据异常）；编写外部审计或用量统计脚本时只锁定首个非空 chunk 的 `modelVersion`，勿误判为降智切模。
 
 ### 平台差异
 

@@ -33,6 +33,7 @@ description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /te
 
 > **纪律**：
 > - 日常只读验证、异构复核和检索脏活全面改用 **`Gemini 4 Hydrogen`**（默认思考档 `gemini-4-hydrogen-high`，淘汰 `Gemini 3.8 Flash / 3.8f`）：要求真跑 Hydrogen 时走 `swarm(action="add", model="gemini-4-hydrogen-high", workspace="inherit")`；常规轻量扫描可用 `flash-verifier`（`model: flash`）；需要主模型同等级深度推理或代码施工的子任务用 `Model: "inherit"`。
+> - **Hydrogen 隐式前缀缓存保护（防短命冷启动失配）**：`Gemini 4 Hydrogen` 在独立单轮请求间仅改动少量字符即可能丢失大段 `systemInstruction` 的隐式共享前缀缓存报告；避免频繁冷启动携带超大系统提示词的一次性短命 4H 子任务，同类只读校验/扫描尽量合并为单次批处理清单，或通过 `send_message` 复用已有存活子代理。
 > - **4c / 4a 配额与档位分流**：当主会话运行在 `Gemini 4 Carbon` 时，仅将跨子系统架构重构、深层根因排查、安全审计与形式化/多步验证留在 4c（`High` / `Medium`）；常规单模块施工、高频问答或 Pro 订阅环境优先使用 `Gemini 4 Argon`（`Medium` / `Low`），避免在轻量任务上烧穿 5 小时与周配额。
 > - **对外交付与前端 UI 密度协同**：若使用 `Gemini 4 Carbon` 产出客户文档或前端界面，Word 文档在转出终版 `.docx` 前默认串联 [`humanizer-zh`](../docx-delivery/skills/docx-delivery/SKILL.md)（或交由 `Gemini 4 Argon` 终审润色）；UI 开发严格限制容器嵌套深度（≤3 层）与首屏信息密度（细则见 [`IMPLEMENTATION.md`](../../rules/IMPLEMENTATION.md)）。
 
@@ -89,6 +90,8 @@ description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /te
 1. **最小权限原则**：`dsh-bridge` 默认权限已设为 `"read-only"`；仅在用户明确授权修改工作区文件时显式传 `permission: "workspace-write"`；跨目录授权施工才传 `"danger-full-access"`，且 `approval_policy` 默认保持 `"never"`。
 2. **会话标签卫生**：按任务语义命名 `session` 标签（以便多轮续聊同一上下文）；一次性探针或临时任务结束后，主动调用 `forget(session)` 清理映射。
 3. **遵守目标工程红线**：派给外部 Agent 的任务必须遵守当前工作区根目录的 `AGENTS.md`（严禁裸改生产红线配置、严禁触碰用户代理与网络配置）。
+4. **无头 Plan Mode 死锁与超时保护**：桥接 `agy --output-format stream-json` 等无头 CLI 时，严禁在 Plan Mode 下派发不调用 `exit_plan_mode` 的纯对话问答（会导致流不发终态 `result` 事件而僵死至 300 秒看门狗强杀）；对短问答/探针任务建议显式传入小于 300 秒的超时（如 `timeout_ms: 240000`）。
+5. **流式模型指纹与自建多轮思考块卫生**：若编写日志统计或直连 Gemini 4 SSE 脚本，记录模型指纹时只取首个非空 chunk 的 `modelVersion`，忽略 STOP 结束帧偶发突变为 `3.1-flash-lite-*` 的元数据错乱；自建多轮 REST 客户端须移除已忽略/弃用的 `temperature` / `top_p` / `top_k`，原样回传有效 `thoughtSignature` 并剔除历史中长度为 0 token 的空 `thought` 块，避免触发原始思考链泄漏。
 
 ### 4.2 桌面 GUI 桥（如 `tianshu`）操作纪律
 1. **标准闭环流程**：

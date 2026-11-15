@@ -71,7 +71,7 @@ description: "当执行多步骤工程开发、复杂故障排查（INVESTIGATIO
 ## 7 独立 Review 细则（原全局 §8）
 
 - **触发范围**：真实存档、数据库或地图的格式转换与写回、批量破坏性操作、生产部署、Critical/High 风险修复及大范围重构需要独立 Review。普通文本导出、副本中的隔离实验和局部低风险编辑可自行验证。
-- **执行纪律**：Reviewer 默认只读，核对完成声明、实际调用的产物与验证层级；关键边界有疑点时做有区分力的反例。Reviewer 优先使用与施工代理不同厂家或不同模型家族（如施工用 `Gemini 4 Carbon`，复核用 `Gemini 4 Argon` 或经 MCP 桥接的外部异构模型）；同一模型复核同一产物只记为自查。发现问题给 `Severity / Evidence / Failure Scenario / Minimum Fix`。
+- **执行纪律**：Reviewer 默认只读，核对完成声明、实际调用的产物与验证层级；关键边界有疑点时做有区分力的反例。Reviewer 优先使用与施工代理不同厂家或不同模型型号/家族（如施工用 `Gemini 4 Carbon`，只读复核优先用 `Gemini 4 Hydrogen`［通过 `swarm` 显式指定 `gemini-4-hydrogen-high`，不再使用 `Gemini 3.8 Flash / 3.8f`］、`Gemini 4 Argon` 或经 MCP 桥接的外部异构模型）；同一模型复核同一产物只记为自查。发现问题给 `Severity / Evidence / Failure Scenario / Minimum Fix`。
 - **门禁**：必需复核未完成只报 `READY_FOR_REVIEW` 或 `READY_FOR_DEPLOYMENT_REVIEW`，不得报 `PASS`；自查不算独立复核。
 
 ## 8 最终四态回报协议（原全局 §15）

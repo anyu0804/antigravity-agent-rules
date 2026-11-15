@@ -1,6 +1,6 @@
 # Antigravity Agent Rules
 
-这是一套给 Google Antigravity 桌面端（IDE / 2.0）& agy CLI 用的跨平台 Agent 分层规则、底层命令拦截 Hook、去 AI 味文风与按需 Skill 配置（已在 Gemini 4 Argon、Claude Opus 5.5 与 Gemini 3.8 Flash 上长期实测；含针对 2026-11-10 上线的 Gemini 4 Carbon 与 `/swarm` 多代理并行的初步适配）。
+这是一套给 Google Antigravity 桌面端（IDE / 2.0）& agy CLI 用的跨平台 Agent 分层规则、底层命令拦截 Hook、去 AI 味文风与按需 Skill 配置（已在 Gemini 4 Argon、Claude Opus 5.5 与 Gemini 3.8 Flash 历史基线上长期实测；含针对 Gemini 4 Carbon、Gemini 4 Hydrogen 与 `/swarm` 多代理并行的适配）。
 
 重度用 Agent 写代码或排障时，常会遇到它自作主张闯祸：诊断网络报错时顺手误杀本地代理软件、停掉 TUN 虚拟网卡服务或篡改系统代理注册表导致直接断网，或者误执行 `rm -rf`、`git reset --hard` 把未提交的代码抹掉。光在提示词里写“不许删文件、不许动代理”并不稳，上下文一长模型就会忘。这套配置把高危命令放到进程级 Hook 里硬拦，再把常驻规则、专项规则、文风和执行协议按层拆开按需加载。
 
@@ -157,7 +157,7 @@ flowchart TD
 - `hooks/`（硬拦截层）：在工具调用前后由宿主直接调用，不占模型上下文 Token。`pretool_guard.ps1`（Windows）与 `pretool_guard.cjs`（macOS / Linux）在进程级拦住强删、丢代码和杀代理断网命令（非黑名单默认返回 `allow` 交回宿主审批策略，审计日志仅记拦截项并自动脱敏密钥），`read_loop_guard.cjs` 在 `observe` 模式下记录重复读同一文件区间的死循环。
 - `global/`（Always-on 常驻底座）：只有 `GEMINI.md`、`AGENTS.md` 和 `THINKING-VISIBILITY.md` 三个文件常驻，共约 100 行。规定防开盒与路径脱敏、代理只读红线、按平台分流的 Shell 偏好（Windows 用 Git Bash / `pwsh` 7，macOS / Linux 用原生 `zsh` / `bash`）、主会话工具调用前显式说明排查脉络（后台并行子代理与纯正文创作/前端 Sidecar 同步协议豁免）、动作分级（含 `branch`/`share` 隔离 worktree 未合入主分支前批量修改豁免）、`FAST_PATH` / `INVESTIGATION_PATH` 切换、证据分级（`VERIFIED` / `NOT_PROVEN` / `HYPOTHESIS`）以及专项规则路由。
 - `rules/`（按需条件规则层）：带 `trigger: model_decision`，平时只向模型暴露一行触发条件描述。仅在涉及后台进程与 GUI 脱钩、诊断转施工判断与前端 UI 截图验收、8 分钟长任务阶段汇报、打包发布、Windows 脚本编码或外部联网检索时按需加载。
-- `skills/` 与 `agents/`（按需执行协议与子代理层）：存放多步骤工程状态机、第三方源码核实、外部宿主集成验收先行（`ACCEPTANCE.md`）、异构模型复核与四态回报（`task-intake`），多源检索（`research-routing`），只读网络排查（`safe-network-diagnostics`），多代理分档并发与 `/swarm` 并行编排（`multi-agent-orchestrator`），客户端缓存归档（`client-maintenance`），Word 转换校验（`docx-delivery`）和小说创作（`chinese-novelist`）等标准作业程序，同时提供运行在 Gemini Flash 上的全局只读验证子代理 `flash-verifier.md` 来隔离长日志与哈希扫描脏活。
+- `skills/` 与 `agents/`（按需执行协议与子代理层）：存放多步骤工程状态机、第三方源码核实、外部宿主集成验收先行（`ACCEPTANCE.md`）、异构模型复核与四态回报（`task-intake`），多源检索（`research-routing`），只读网络排查（`safe-network-diagnostics`），多代理分档并发与 `/swarm` 并行编排（`multi-agent-orchestrator`），客户端缓存归档（`client-maintenance`），Word 转换校验（`docx-delivery`）和小说创作（`chinese-novelist`）等标准作业程序，同时提供全局只读验证子代理 `flash-verifier.md`（YAML 保持 `model: flash` 档位枚举；需要确保真跑 `Gemini 4 Hydrogen` 执行异构复核时，通过 `swarm` 显式指定 `gemini-4-hydrogen-high` 绕开服务端旧 `ModelTierConfig` 映射）来隔离长日志与哈希扫描脏活。
 - `tone/`（按需文风层）：包含 `lieflat-less-ai-tone`（基于 283 万字语料统计的 11 条去 AI 味写作规范）和 `humanizer-zh`（去除空话、重复与模板腔）。平时问答与写代码不加载，只在创作或润色中文文章及用户点名去 AI 味时读取。
 
 ---
@@ -197,7 +197,7 @@ flowchart TD
 | [`skills/client-maintenance/SKILL.md`](./skills/client-maintenance/SKILL.md) | `~/.gemini/antigravity/skills/client-maintenance/SKILL.md`（及可选 `<workspace>/.agents/skills/`） | 按需 Skill (`skills/`) | 清理 Antigravity 缓存、维护客户端存储空间或归档陈旧历史会话时 | 执行 7 天活跃会话与当前会话白名单保护、14 天以上陈旧会话压缩归档至 `_archives/` 并校验、以及临时渲染缓存安全释放。 |
 | [`skills/docx-delivery/`](./skills/docx-delivery/skills/docx-delivery/SKILL.md) | `~/.gemini/config/plugins/docx-delivery/` | 按需 Skill (`skills/`) | 用户要求将 Markdown/文本/报告转换为可编辑的 Word (`.docx`) 成品时 | 提供两条实战验证的转换链（无图版 `md2docx_one.py` / 带图版 `md2docx_img.py`）、防覆盖保护与 `validate_docx.py` 校验；区分既有文本原样转换与 Agent（如 Carbon）撰稿的对外文档交付（转 `.docx` 前默认串联 `humanizer-zh` 或交由 Argon 润色）。 |
 | [`skills/chinese-novelist/`](./skills/chinese-novelist/SKILL.md) | `~/.gemini/antigravity/skills/chinese-novelist/`（及可选 `<workspace>/.agents/skills/`） | 按需 Skill (`skills/`) | 用户要求分章节创作中文中长篇小说（10–50 章）或续写小说项目时 | 与全局规则（§4A 阶段汇报、覆盖前备份、`lieflat-less-ai-tone` 自检、分块 `write_file`）衔接的小说创作入口（已将子文档链接改为上游 GitHub 完整链接，上游仓库见 [`UPSTREAM.md`](./skills/chinese-novelist/UPSTREAM.md)）。 |
-| [`agents/flash-verifier.md`](./agents/flash-verifier.md) | `~/.gemini/config/plugins/antigravity-core-rules/agents/flash-verifier.md` | 按需全局 Subagent (`agents/`) | `invoke_subagent(TypeName="flash-verifier")`（跑只读扫描、核对哈希、筛长日志时委派） | 运行在 Gemini Flash 上的全局只读验证专员定义，强制纯只读、单条回复 ≤40 行、大输出落盘 `scratch/`。 |
+| [`agents/flash-verifier.md`](./agents/flash-verifier.md) | `~/.gemini/config/plugins/antigravity-core-rules/agents/flash-verifier.md` | 按需全局 Subagent (`agents/`) | `invoke_subagent(TypeName="flash-verifier")`（跑轻量扫描、核对哈希、筛长日志时委派） | 全局只读验证专员定义（YAML 保持 `model: flash` 四档枚举之一，强制纯只读、单条回复 ≤40 行、大输出落盘 `scratch/`；需真跑 `Gemini 4 Hydrogen` 做异构只读复核时改走 `swarm` 显式指定 `gemini-4-hydrogen-high` 绕开服务端旧 `ModelTierConfig` 映射）。 |
 | [`mcp/dsh-bridge/`](./mcp/dsh-bridge/) & [`mcp/agent-bridge/`](./mcp/agent-bridge/) | 按需注册至 Antigravity MCP 配置 | 可选跨端 MCP 桥 (`mcp/`) | 跨端委派外部 CLI Agent（如 DSH Headless）执行只读或开发任务时 | 零依赖 Node.js MCP stdio 桥（`dsh-bridge` 默认 `read-only` 并完成 Windows/macOS 适配与真机验证；`agy-agent-bridge` 为通用可插拔桥，已加子进程环境变量白名单隔离与状态文件 `0o600` 权限，通过 35/35 假后端协议自检）。 |
 
 </details>
@@ -279,8 +279,9 @@ flowchart TD
   - 主力推理与施工模型（Main Agent / `Model: "inherit"`）：
     - **Gemini 4 Argon**（`High` / `Medium` / `Low`）
     - **Claude Opus 5.5**（`High` / `Medium`）
-  - 只读验证与脏活子代理模型（Subagent / `flash-verifier`）：
-    - **Gemini 3.8 Flash**（`High` / `model: flash` 3.8f），专职承担高频只读扫描、SHA-256 哈希核对、长篇日志筛查与广度代码搜索，将海量中间输出隔离在子会话内，只向主会话返回 ≤40 行的结构化结论与 `文件:行号`。
+  - 只读验证、异构复核与脏活子代理模型：
+    - **现行推荐：`Gemini 4 Hydrogen`**（默认思考档 `gemini-4-hydrogen-high`，淘汰 `Gemini 3.8 Flash / 3.8f`）。实测宿主事实（`VERIFIED`）：`/swarm` 已在线提供 `gemini-4-hydrogen-low/medium/high/xhigh` 四档并可直接拉起真跑（模型目录在线可用性 `VERIFIED`，长周期高并发压测 `NOT_PROVEN`）；而 `agents/*.md` 头受限于 `ParseModelTier` 仅接受四档枚举（`inherit` / `flash_lite` / `flash` / `pro`），且服务端 `ModelTierConfig` 当前仍将 `flash`（及 `pro`）下发为 `gemini-3.8-flash-tiered`，故需要真跑 Hydrogen 做异构独立复核时须改走 `swarm` 显式指定 `gemini-4-hydrogen-high`。
+    - **历史实测基线：`Gemini 3.8 Flash`**（`High` / `model: flash` 3.8f）：此前长期承担高频只读扫描、SHA-256 哈希核对、长篇日志筛查与广度代码搜索的实测基线模型。
 - **已做上线初期适配（单会话基础适配 `VERIFIED`；长周期压测 `NOT_PROVEN`）**：
   - **Gemini 4 Carbon**（`High` / `Medium` / `Low`，2026-11-10 面向 Ultra 开放）：已基于上线初期的会话实测与模型特性完成 4c/4a 配额分流、`BidiGenerateContent` 分块落盘收紧、UI 容器嵌套密度约束及 `/swarm` 角色分层规则适配（基础会话运行 `VERIFIED`）；跨数小时的长周期 `/swarm` 多代理高并发压测与极端边界场景仍属 `NOT_PROVEN`。
 - **理论上兼容，未在本机实测（`NOT_PROVEN`）**：

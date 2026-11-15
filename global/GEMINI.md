@@ -28,7 +28,7 @@
 ## 多代理委派（Subagent 派工）
 
 - 任务涉及子代理分工、只读验证/日志筛查/哈希对账、跨模块检索、隔离实验，或需通过 MCP 桥驱动外部 Agent 时，先读 [multi-agent-orchestrator Skill](./config/plugins/antigravity-core-rules/skills/multi-agent-orchestrator/SKILL.md) 再派工。
-- 默认脏活（高频扫描、只读校验、长日志定位）派 `flash`（3.8f）子代理（全局 [flash-verifier](./config/plugins/antigravity-core-rules/agents/flash-verifier.md)）；需深度推理或代码施工的子任务用 `Model: "inherit"`。
+- 默认只读验证、异构模型复核与脏活（高频扫描、只读校验、长日志定位）统一改用 `Gemini 4 Hydrogen`（不再继续使用 `Gemini 3.8 Flash / 3.8f`）：需确保真跑 `Gemini 4 Hydrogen`（如异构独立复核/代码与闭包审计）时，使用 `swarm(action="add", model="gemini-4-hydrogen-high", workspace="inherit")`；日常轻量扫描可派全局 [flash-verifier](./config/plugins/antigravity-core-rules/agents/flash-verifier.md)（`model: flash`，待服务端 `ModelTierConfig` 切至 Hydrogen 前底层暂由服务端档位映射，播报时勿再称 `3.8f`）；需深度推理或代码施工的子任务用 `Model: "inherit"`。
 
 ## 共享待办入口（仅在用户配置时生效）
 

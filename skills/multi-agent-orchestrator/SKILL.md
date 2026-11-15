@@ -1,6 +1,6 @@
 ---
 name: multi-agent-orchestrator
-description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /teamwork）多代理并行协作、默认派 3.8f（model: flash）子代理干脏活/只读验证、大型代码库跨模块检索、需要保持主对话上下文干净、需要利用独立工作区（branch/share）做无污染实验、或需要通过 MCP 桥遥控外部客户端 Agent（如 dsh-bridge / agy-agent-bridge / dsh-crew / tianshu）时使用。指导何时及如何委派 flash-verifier、research、项目级验证子代理、自建 subagent 以及外部 MCP。
+description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /teamwork）多代理并行协作、默认派 Gemini 4 Hydrogen（swarm 指定 gemini-4-hydrogen-high 或 flash 档子代理）干脏活/只读验证与异构复核、大型代码库跨模块检索、需要保持主对话上下文干净、需要利用独立工作区（branch/share）做无污染实验、或需要通过 MCP 桥遥控外部客户端 Agent（如 dsh-bridge / agy-agent-bridge / dsh-crew / tianshu）时使用。指导何时及如何委派 flash-verifier、research、项目级验证子代理、自建 subagent 以及外部 MCP。
 ---
 
 # 多 Agent 委派与跨端协同规范（multi-agent-orchestrator）
@@ -9,9 +9,9 @@ description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /te
 
 ## 1. 核心目标：保护主会话上下文与注意力
 
-主 Agent 的上下文窗口是最宝贵的推理资源。以下场景应优先委派给 Subagent（默认优先使用 3.8f / `model: flash`）或外部协同 Agent（MCP），避免主上下文被海量中间日志、长篇搜索结果或重复校验输出污染：
+主 Agent 的上下文窗口是最宝贵的推理资源。以下场景应优先委派给只读子代理（默认优先使用 `Gemini 4 Hydrogen`，不再沿用 `Gemini 3.8 Flash / 3.8f`）或外部协同 Agent（MCP），避免主上下文被海量中间日志、长篇搜索结果或重复校验输出污染：
 
-1. **通用只读验证、日志筛查与哈希对账**（跑检查脚本、核对备份 SHA-256、排查长日志）→ 默认委派给全局 3.8f 专员 [`flash-verifier`](../../agents/flash-verifier.md)（若当前工作区 `.agents/agents/` 下定义了项目级只读验证专员，也可按需委派）。
+1. **通用只读验证、异构独立复核、日志筛查与哈希对账**（跑检查脚本、核对备份 SHA-256、排查长日志、独立代码/闭包审计）→ 需强制真跑 `Gemini 4 Hydrogen`（如异构模型家族只读复核）时，使用 `swarm(action="add", model="gemini-4-hydrogen-high", workspace="inherit")` 拉起只读专员；常规轻量扫描可委派全局只读专员 [`flash-verifier`](../../agents/flash-verifier.md)（若当前工作区 `.agents/agents/` 下定义了项目级只读验证专员，也可按需委派）。
 2. **广度代码/文档检索**（跨多个目录搜寻调用链、查找历史实现、盘点多文件结构）→ 委派给内置只读 `research` subagent（可指定 `Model: "flash"`）。
 3. **无污染隔离实验**（尝试高风险重构或对比不同实现方案，不希望弄脏当前工作树）→ 使用 `Workspace: "share"` 或 `"branch"` 启动 `self` subagent。
 4. **跨客户端外部 Agent 遥控（MCP）**：
@@ -24,14 +24,15 @@ description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /te
 
 | 子代理类型 | 推荐 `Model` | 推荐 `Workspace` | 适用场景与权限边界 |
 | :--- | :--- | :--- | :--- |
-| **`flash-verifier`**（全局） | 内置设为 `flash` (3.8f) | `inherit` | **所有项目通用**：跑只读校验脚本、核对备份/产物 SHA-256、筛查长日志与定位行号。纯只读，只回结论与 `文件:行号`。 |
-| **项目级验证专员**（`.agents/agents/*.md`） | 内置设为 `flash` (3.8f) | `inherit` | 特定工程专用：运行工作区专项检查脚本、校验备份哈希。 |
+| **`swarm` 只读专员**（异构复核首选） | `gemini-4-hydrogen-high` | `inherit` | **真跑 Gemini 4 Hydrogen（绕开服务端 `ModelTierConfig`）**：异构模型家族独立 Review、发布闭包审计、深度只读核查。派单 `brief` 须显式声明纯只读边界，完成后 `swarm(action="kill")` 收尾。 |
+| **`flash-verifier`**（全局） | 内置 `flash` 档（待服务端切至 Hydrogen） | `inherit` | **所有项目通用轻量脏活**：跑只读校验脚本、核对备份/产物 SHA-256、筛查长日志与定位行号。纯只读，只回结论与 `文件:行号`（注：`.md` 头仅支持四档枚举，服务端 `flash` 档未切至 Hydrogen 前勿谎报为真跑 Hydrogen）。 |
+| **项目级验证专员**（`.agents/agents/*.md`） | 内置 `flash` 档 | `inherit` | 特定工程专用：运行工作区专项检查脚本、校验备份哈希。 |
 | **`research`**（内置） | `flash` / `inherit` | `inherit` | 广度代码探索、多文件搜索与阅读。运行在只读沙箱中，无写入权限，安全零副作用。 |
 | **自定义只读专员** (`define_subagent`) | `flash` / `flash_lite` | `inherit` | 需要反复执行的专项检查（如批量格式合规检查、分片对账）。定义时设 `EnableWriteTools: false`。 |
 | **`self`（并行施工/实验）** | `inherit` | `share` 或 `branch` | 独立子模块开发或隔离验证。`share` 共享底层仓库（类 git worktree），避免全量复制开销且互不干扰。 |
 
 > **纪律**：
-> - 日常高频扫描、只读验证和检索脏活优先走 `flash`（3.8f）子代理（如 `flash-verifier`）；需要主模型同等级深度推理或代码施工的子任务用 `Model: "inherit"`。
+> - 日常只读验证、异构复核和检索脏活全面改用 **`Gemini 4 Hydrogen`**（默认思考档 `gemini-4-hydrogen-high`，淘汰 `Gemini 3.8 Flash / 3.8f`）：要求真跑 Hydrogen 时走 `swarm(action="add", model="gemini-4-hydrogen-high", workspace="inherit")`；常规轻量扫描可用 `flash-verifier`（`model: flash`）；需要主模型同等级深度推理或代码施工的子任务用 `Model: "inherit"`。
 > - **4c / 4a 配额与档位分流**：当主会话运行在 `Gemini 4 Carbon` 时，仅将跨子系统架构重构、深层根因排查、安全审计与形式化/多步验证留在 4c（`High` / `Medium`）；常规单模块施工、高频问答或 Pro 订阅环境优先使用 `Gemini 4 Argon`（`Medium` / `Low`），避免在轻量任务上烧穿 5 小时与周配额。
 > - **对外交付与前端 UI 密度协同**：若使用 `Gemini 4 Carbon` 产出客户文档或前端界面，Word 文档在转出终版 `.docx` 前默认串联 [`humanizer-zh`](../docx-delivery/skills/docx-delivery/SKILL.md)（或交由 `Gemini 4 Argon` 终审润色）；UI 开发严格限制容器嵌套深度（≤3 层）与首屏信息密度（细则见 [`IMPLEMENTATION.md`](../../rules/IMPLEMENTATION.md)）。
 
@@ -41,7 +42,7 @@ description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /te
 
 1. **角色分层（架构/审计与施工解耦）**：
    - 优先由 `Gemini 4 Carbon` 承担顶层架构拆解、跨代理任务协调与终态对抗性验收（Adversarial Verifier，核查边界条件、回归风险与安全漏洞）；
-   - 具体子模块的并发编码、单测补全与只读扫描下放给并行子代理（`Gemini 4 Argon` 或 `Gemini 3.8 Flash`）。
+   - 具体子模块的并发编码、单测补全与只读扫描下放给并行子代理（`Gemini 4 Hydrogen`［默认 `gemini-4-hydrogen-high`］或 `Gemini 4 Argon`，不再使用 `Gemini 3.8 Flash`）。
 2. **互斥写入作用域与隔离工作树批量豁免（Disjoint Write Scopes）**：
    - 并行启动多个带写权限的施工代理时，派单提示词中**必须显式声明各自允许修改的目录或文件白名单**，严禁两个并行代理同时修改同一文件或共享全局配置；
    - 优先配合 `Workspace: "share"` 或 `"branch"` 隔离 Git worktree：根据全局规则 §1 豁免条款，运行在 `branch` / `share` 隔离工作树内且尚未合入主分支的 Worker，允许在授权白名单内直接执行多文件批量修改（≥5 个文件），无需逐次停下等待用户确认，统一留在 Verifier 终审与合入主分支前由用户一次性拍板。

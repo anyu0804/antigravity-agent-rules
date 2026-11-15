@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.5] - 2026-11-14
+
+将只读验证与异构模型复核专员标准全面切换至 **`Gemini 4 Hydrogen`**（默认思考档 `gemini-4-hydrogen-high`，淘汰 `Gemini 3.8 Flash / 3.8f`），并基于宿主二进制与轨迹元数据实测修正路由方式（`global/THINKING-VISIBILITY.md` 与 `global/AGENTS.md` 保持冻结未改动）：
+
+- **宿主模型路由实测（`VERIFIED`）**：
+  - 查验宿主 `language_server.exe` 的 `ParseAgentScriptItemFromMarkdown` → `modelutils.ParseModelTier` 与活跃会话轨迹 `ModelTierConfig` 确认：`.md` 子代理 frontmatter 的 `model` 字段仅支持 `'inherit' | 'flash_lite' | 'flash' | 'pro'` 四档枚举（填写具体模型 ID 会导致解析失败），且服务端 `ModelTierConfig` 当前仍将 `flash`（及 `pro`）下发为 `gemini-3.8-flash-tiered`；而原生 `swarm` 工具已在线开放 `gemini-4-hydrogen-low/medium/high/xhigh` 四档模型目录并可显式直连。
+- **规则与子代理配置更新**：
+  - `agents/flash-verifier.md`：保留 YAML `model: flash` 合法枚举不变，将专员定位说明更新为 `Gemini 4 Hydrogen / Flash 档只读专员`（不再自称 3.8f），并注明强制真跑 Hydrogen 时走 `swarm`。
+  - `global/GEMINI.md`、`skills/multi-agent-orchestrator/SKILL.md`、`skills/task-intake/SKILL.md`、`global/plugin.json`、`README.md`：统一将只读验证与异构独立复核切换至 `Gemini 4 Hydrogen`（`gemini-4-hydrogen-high`），在选型表新增 `swarm` 只读专员（异构复核首选）并如实标注 `flash-verifier` 当前服务端映射状态，版本号升至 `1.3.5`。
+
 ## [1.3.4] - 2026-11-11
 
 按需层（`skills/` 与 `rules/`）5 处工程协议与并发口径补丁，`global/` 常驻层保持冻结未改动（符合 `RULE-MAINTENANCE.md` §14 规则冻结原则）：

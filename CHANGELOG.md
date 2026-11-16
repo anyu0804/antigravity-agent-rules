@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.3.7] - 2026-11-17
+
+修正全局独立 Skill 部署路径在 Antigravity 2.x 下失效的问题，并补强长篇连载/设定文创作防前后矛盾护栏（`global/plugin.json` 升至 `1.3.7`）：
+
+- **修正全局独立 Skill 部署与迁移路径（`install.ps1`、`uninstall.ps1`、`hooks/unix/hooks-installer.mjs`、`README.md`、`skills/client-maintenance/SKILL.md`）**：
+  - **宿主二进制实证（`VERIFIED`）**：核查内置 `agy-customizations` 规范与 Windows 桌面端 `language_server.exe` 扫描路径确认，全局独立 Skill 的实际发现路径为 **`~/.gemini/config/skills/<name>/SKILL.md`**，旧版安装脚本使用的 `~/.gemini/antigravity/skills/` 在宿主二进制中零匹配（`count=0`），导致 `chinese-novelist` 与 `client-maintenance` 长期未被发现加载。
+  - 将 Windows 与 Unix/macOS 安装脚本的独立 Skill 部署目标统一改至 `~/.gemini/config/skills/`，自动备份并迁移清理带 `.antigravity-rules-managed` 标记的旧版 `antigravity/skills/` 遗留目录（严格跳过并保留无标记用户自有目录）；同步修正 `skills/client-maintenance/SKILL.md` 中指向 `AGENTS.md` 的相对链接层级（`../../plugins/antigravity-core-rules/rules/AGENTS.md`）。
+- **补强 `skills/chinese-novelist/SKILL.md` 连载防矛盾护栏**：
+  - 新增「设定集终态与当前状态严格隔离（硬账本约束）」与「真实参数核验与跨章钩子回修」原则：要求直接基于既有设定集/连载章节续写时必须先通读既有章并建立/补齐动态可用清单与积分/资金余额账本，严禁越界刷出未解锁编制；设定集未写明的真实装备/地理史实参数须检索或脚本实算核验；跨章改路线须同步用 `edit_file` 回修上章结尾钩子。
+- **验证状态**：`install.ps1` / `uninstall.ps1` 纯 ASCII 字节校验、Windows PowerShell 5.1 隔离沙盒实跑（含迁移旧托管目录、保留无标记自有目录及 194 项 Hook 自检）、Node 跨平台安装器隔离沙盒实跑（含 242 项 Hook 自检）均实测通过（`VERIFIED`）。
+
 ## [1.3.6] - 2026-11-16
 
 针对 2026 年 11 月中旬 Google AI 开发者论坛实证的 **Gemini 4（Carbon / Hydrogen / Argon）6 类底层工程与流式解码缺陷**，在保持常驻底座（`global/AGENTS.md` 与 `global/THINKING-VISIBILITY.md`）冻结的前提下，精准加固按需规则、子代理与 MCP 桥接说明（`global/plugin.json` 升至 `1.3.6`）：

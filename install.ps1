@@ -51,7 +51,7 @@ $GeminiDir   = Join-Path $TargetHome '.gemini'
 $ConfigDir   = Join-Path $GeminiDir 'config'
 $ScriptsDir  = Join-Path $ConfigDir 'scripts'
 $PluginsDir  = Join-Path $ConfigDir 'plugins'
-$AgySkillDir = Join-Path (Join-Path $GeminiDir 'antigravity') 'skills'
+$GlobalSkillDir = Join-Path $ConfigDir 'skills'
 
 $Utf8NoBom   = New-Object System.Text.UTF8Encoding($false)
 $ManagedMarkerFile = '.antigravity-rules-managed'
@@ -145,8 +145,8 @@ $ManagedTargets = @(
     @{ Rel = 'config\plugins\docx-delivery';              Mode = 'OVERWRITE (managed)';       IsDir = $true },
     @{ Rel = 'config\plugins\lieflat-less-ai-tone';       Mode = 'OVERWRITE (managed)';       IsDir = $true },
     @{ Rel = 'config\plugins\humanizer-zh';               Mode = 'OVERWRITE (managed)';       IsDir = $true },
-    @{ Rel = 'antigravity\skills\client-maintenance';     Mode = 'OVERWRITE (managed)';       IsDir = $true },
-    @{ Rel = 'antigravity\skills\chinese-novelist';       Mode = 'OVERWRITE (managed)';       IsDir = $true }
+    @{ Rel = 'config\skills\client-maintenance';          Mode = 'OVERWRITE (managed)';       IsDir = $true },
+    @{ Rel = 'config\skills\chinese-novelist';            Mode = 'OVERWRITE (managed)';       IsDir = $true }
 )
 
 if ($HookOnly) {
@@ -181,6 +181,30 @@ if ((-not $HookOnly) -and (Test-Path -LiteralPath $LegacyAnyiFull)) {
         Rel  = $LegacyAnyiRel
         Full = $LegacyAnyiFull
         Mode = 'MIGRATE -> config\plugins\antigravity-core-rules'
+    }
+}
+
+$LegacySkillRels = @(
+    'antigravity\skills\client-maintenance',
+    'antigravity\skills\chinese-novelist'
+)
+$LegacyManagedSkills = @()
+if (-not $HookOnly) {
+    foreach ($lsRel in $LegacySkillRels) {
+        $lsFull = Join-Path $GeminiDir $lsRel
+        if ((Test-Path -LiteralPath $lsFull) -and (Test-IsManagedDir $lsFull)) {
+            $newRel = $lsRel -replace '^antigravity\\', 'config\'
+            $ExistingItems += [PSCustomObject]@{
+                Rel  = $lsRel
+                Full = $lsFull
+                Mode = ('MIGRATE -> ' + $newRel)
+            }
+            $LegacyManagedSkills += [PSCustomObject]@{
+                Rel  = $lsRel
+                Full = $lsFull
+                New  = (Join-Path $GeminiDir $newRel)
+            }
+        }
     }
 }
 
@@ -418,7 +442,7 @@ foreach ($op in $OptionalPlugins) {
 
 $StandaloneSkills = @('client-maintenance', 'chinese-novelist')
 foreach ($ssk in $StandaloneSkills) {
-    $sskDst = Join-Path $AgySkillDir $ssk
+    $sskDst = Join-Path $GlobalSkillDir $ssk
     if (Test-IsManagedDir $sskDst) {
         Copy-TreeWithReplacement `
             -SrcDir (Join-Path (Join-Path $RepoRoot 'skills') $ssk) `
@@ -437,6 +461,13 @@ foreach ($ssk in $StandaloneSkills) {
         } else {
             Write-Host "  [SKIP (unmanaged)] $wsSkillDir"
         }
+    }
+}
+
+foreach ($lms in $LegacyManagedSkills) {
+    if (Test-Path -LiteralPath $lms.Full) {
+        Remove-Item -LiteralPath $lms.Full -Recurse -Force
+        Write-Host ("  [MIGRATED] Removed legacy skill directory '{0}' -> '{1}'" -f $lms.Full, $lms.New)
     }
 }
 

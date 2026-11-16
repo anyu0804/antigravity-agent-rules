@@ -96,6 +96,8 @@ $ManagedRelPaths = @(
     'config\plugins\docx-delivery',
     'config\plugins\lieflat-less-ai-tone',
     'config\plugins\humanizer-zh',
+    'config\skills\client-maintenance',
+    'config\skills\chinese-novelist',
     'antigravity\skills\client-maintenance',
     'antigravity\skills\chinese-novelist'
 )

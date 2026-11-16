@@ -122,7 +122,8 @@ function paths(home) {
     hooks: path.join(config, 'hooks.json'),
     scripts: path.join(config, 'scripts'),
     plugins: path.join(config, 'plugins'),
-    agySkills: path.join(gemini, 'antigravity', 'skills'),
+    globalSkills: path.join(config, 'skills'),
+    legacyAgySkills: path.join(gemini, 'antigravity', 'skills'),
     geminiMd: path.join(gemini, 'GEMINI.md'),
   };
 }
@@ -173,8 +174,8 @@ function getManagedTargets(hookOnly) {
     { rel: 'config/plugins/docx-delivery', mode: 'OVERWRITE (managed)', isDir: true },
     { rel: 'config/plugins/lieflat-less-ai-tone', mode: 'OVERWRITE (managed)', isDir: true },
     { rel: 'config/plugins/humanizer-zh', mode: 'OVERWRITE (managed)', isDir: true },
-    { rel: 'antigravity/skills/client-maintenance', mode: 'OVERWRITE (managed)', isDir: true },
-    { rel: 'antigravity/skills/chinese-novelist', mode: 'OVERWRITE (managed)', isDir: true },
+    { rel: 'config/skills/client-maintenance', mode: 'OVERWRITE (managed)', isDir: true },
+    { rel: 'config/skills/chinese-novelist', mode: 'OVERWRITE (managed)', isDir: true },
   ];
 }
 
@@ -287,6 +288,18 @@ async function install(opts) {
   const legacyAnyiFull = path.join(P.gemini, legacyAnyiRel);
   if (!opts.hookOnly && fs.existsSync(legacyAnyiFull)) {
     existing.push({ rel: legacyAnyiRel, mode: 'MIGRATE -> config/plugins/antigravity-core-rules', isDir: true });
+  }
+  const legacySkillsToMigrate = [];
+  if (!opts.hookOnly) {
+    for (const ssk of STANDALONE_SKILLS) {
+      const lsRel = 'antigravity/skills/' + ssk;
+      const lsFull = path.join(P.gemini, lsRel);
+      if (fs.existsSync(lsFull) && isManagedDir(lsFull)) {
+        const newRel = 'config/skills/' + ssk;
+        existing.push({ rel: lsRel, mode: 'MIGRATE -> ' + newRel, isDir: true });
+        legacySkillsToMigrate.push({ full: lsFull, next: path.join(P.globalSkills, ssk) });
+      }
+    }
   }
 
   console.log('');
@@ -467,7 +480,7 @@ async function install(opts) {
     }
 
     for (const ssk of STANDALONE_SKILLS) {
-      const sskDst = path.join(P.agySkills, ssk);
+      const sskDst = path.join(P.globalSkills, ssk);
       if (isManagedDir(sskDst)) {
         copyTreeWithReplacement(
           path.join(REPO_ROOT, 'skills', ssk),
@@ -492,6 +505,12 @@ async function install(opts) {
         } else {
           console.log('  [SKIP (unmanaged)] ' + wsSkillDir);
         }
+      }
+    }
+    for (const lms of legacySkillsToMigrate) {
+      if (fs.existsSync(lms.full)) {
+        fs.rmSync(lms.full, { recursive: true, force: true });
+        console.log(`  [MIGRATED] Removed legacy skill directory '${lms.full}' -> '${lms.next}'`);
       }
     }
     console.log('[4/5] Deployed Layer 4 (skills/ & agents/) & Layer 5 (tone/).');
@@ -578,6 +597,9 @@ async function uninstall(opts) {
     .filter((x) => x.rel !== 'config/config.json');
   if (!hookOnly) {
     managedTargets.push({ rel: 'config/plugins/' + LEGACY_PLUGIN_NAME, isDir: true });
+    for (const ssk of STANDALONE_SKILLS) {
+      managedTargets.push({ rel: 'antigravity/skills/' + ssk, isDir: true });
+    }
   }
 
   const toRestore = [];

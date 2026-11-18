@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.8] - 2026-11-19
+
+适配 Antigravity `2.33.0` 双阶段 `Orchestrator` 与新版原生 `native_swarm`，清理已退役工具名并精简常驻规则重复表述（`global/plugin.json` 升至 `1.3.8`、`rules/search-routing.plugin.json` 升至 `1.0.1`）：
+
+- **兼容 Antigravity `2.33.0` `Orchestrator` 双阶段规划轮（`global/AGENTS.md`、`rules/IMPLEMENTATION.md`、`skills/multi-agent-orchestrator/SKILL.md`）**：
+  - 在 §2A 与 `IMPLEMENTATION.md` 明确 `Orchestrator` 规划轮（编辑工具被宿主锁死）在收敛方案后直接调 `exit_plan_mode` 交棒执行模型，已知小改一句话直接交棒，纯问答/审查直接答复不调 `exit_plan_mode`；并在 `multi-agent-orchestrator` §4.1 中将其与无头 CLI Plan Mode 死锁规避作明确区分。
+- **适配新版原生 `native_swarm` 规则与生命周期（`skills/multi-agent-orchestrator/SKILL.md`、`rules/BACKGROUND-RESOURCES.md`）**：
+  - 声明**常驻模型授权**，覆盖内置 `native_swarm` 默认不切换模型的限制，允许继续显式指派 `gemini-4-hydrogen-high`（重度核查可用 `gemini-4-hydrogen-xhigh`）；补充 `waiting` 休眠态 Worker 任务内复用与 `share`/`branch` 先合入主工作树再 `kill` 纪律，以及常驻 `narrator` / `monitor` 不占并发名额且中途不 `kill` 的豁免。
+- **更新 `search-routing` 工具路由（`rules/search-routing.plugin.json`、`rules/SEARCH-ROUTING.md`、`skills/research-routing/SKILL.md`、`README.md`）**：
+  - 移除已退役的 `read_url_content` 引用，替换为静态公开 URL 只读 `curl -sL`（GET/HEAD）或 `search_web` 直取，并标明内置 `browser` subagent 默认传 `Model: "flash"`。
+- **常驻底座重复表述瘦身（`global/GEMINI.md`、`global/AGENTS.md`、`global/THINKING-VISIBILITY.md`）**：
+  - 精简 `global/GEMINI.md` 多代理与共享待办展开段、`global/AGENTS.md` §1 重复括号说明以及保留独立 `global/THINKING-VISIBILITY.md` 的措辞（补充 `narrator` / `monitor` 豁免），在保持核心边界与双端安装器兼容性的前提下减少常驻上下文占用。
+
 ## [1.3.7] - 2026-11-17
 
 修正全局独立 Skill 部署路径在 Antigravity 2.x 下失效的问题，并补强长篇连载/设定文创作防前后矛盾护栏（`global/plugin.json` 升至 `1.3.7`）：

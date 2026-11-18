@@ -1,6 +1,6 @@
 ---
 name: research-routing
-description: "需要主动检索外部信息时的详细 SOP：search_web 查询构造、来源分级与交叉验证规则、read_url_content 抓取官方原文、时效性 as-of 标注、Browser Agent 降级路径。当任务触发 Search Routing 路由（时效性/外部事实/版本状态/官方文档/公开可验证信息）且需要具体检索方法时使用。"
+description: "需要主动检索外部信息时的详细 SOP：search_web 查询构造、来源分级与交叉验证规则、静态 URL 只读直取官方原文、时效性 as-of 标注、Browser Agent 降级路径。当任务触发 Search Routing 路由（时效性/外部事实/版本状态/官方文档/公开可验证信息）且需要具体检索方法时使用。"
 ---
 
 # research-routing：主动检索 SOP
@@ -29,7 +29,7 @@ description: "需要主动检索外部信息时的详细 SOP：search_web 查询
 
 ## 4. URL 直取
 
-用户给 URL 或已知官方地址 → 先 `read_url_content` 抓原文。仅要求"总结这个页面"时抓完即止，不追加搜索；要求"核验 / 比较 / 最新状态"时抓完继续 `search_web` 交叉。
+用户给静态公开 URL 或已知官方地址 → 先用只读 `curl -sL`（仅限 GET/HEAD，遵守全局代理/网络只读红线）或 `search_web` 取原文。仅要求"总结这个页面"时取完即止，不追加搜索；要求"核验 / 比较 / 最新状态"时取完继续 `search_web` 交叉。
 
 ## 5. 时效标注
 
@@ -37,9 +37,9 @@ description: "需要主动检索外部信息时的详细 SOP：search_web 查询
 
 ## 6. Browser Agent 边界
 
-- 内置 browser subagent 的可用性**以现场实测为准**，不假设其可用或不可用（当前本机状态：未实测，`NOT_PROVEN`）。chrome-devtools MCP 可用不代表 browser subagent 正常，两者是独立通道。
-- 普通信息检索（网页文字、文档、发布记录）一律用 `search_web` / `read_url_content`，不启动 Browser Agent。
-- 必须真实浏览器交互（登录态、动态渲染、页面操作验证）时才用；启动失败 → 记录失败现象，**立即降级 `search_web` / `read_url_content`** 完成检索部分；禁止在检索任务中顺手维修浏览器环境（升级依赖、修配置、装包）。维修需求单独报告 `OUT_OF_SCOPE_NOTED`。
+- 内置 `browser` subagent（默认传 `Model: "flash"`）的可用性**以现场实测为准**，不假设其可用或不可用。`chrome-devtools` MCP 可用不代表 `browser` subagent 正常，两者是独立通道。
+- 普通静态信息检索（网页文字、文档、发布记录）一律用 `search_web` 或只读 `curl -sL`，不启动 Browser Agent。
+- 必须真实浏览器交互（登录态、客户端 JS 动态渲染、页面操作验证）时才用；启动失败或站点受阻 → 记录失败现象，**立即降级 `search_web` / 只读 `curl -sL`** 完成检索部分；禁止在检索任务中顺手维修浏览器环境（升级依赖、修配置、装包）。维修需求单独报告 `OUT_OF_SCOPE_NOTED`。
 
 ## 7. 输出纪律
 

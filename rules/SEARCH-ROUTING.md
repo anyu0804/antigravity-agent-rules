@@ -15,6 +15,6 @@ description: "任务需要近期事件/价格/版本等时效信息、第三方�
 
 详细检索方法与多源规则 → `research-routing` Skill（按需读取），本条只负责路由。
 
-**工具路由**：用户给了 URL 或链接已知 → 先 `read_url_content` 直取原文；仅总结该页内容时不再额外搜索；核验、比较、最新状态类需求 → 继续 `search_web`。
+**工具路由**：用户给了静态公开 URL 或链接已知 → 先用只读 `curl -sL`（仅限 GET/HEAD，严守网络只读红线）或 `search_web` 获取原文；仅总结该页内容时不再额外搜索；核验、比较、最新状态类需求 → 继续 `search_web`。
 
-**Browser Agent** 仅用于必须真实浏览器交互的任务（登录态、动态页面操作、渲染验证），不作为普通搜索入口。Browser Agent 启动失败时，普通检索任务立即降级 `search_web` 完成，禁止顺手维修浏览器环境。检索后仍无法确认的信息标注 `NOT_PROVEN`，不凭记忆补全。
+**Browser Agent**（内置 `browser` subagent，默认 `Model: "flash"`）仅用于必须真实浏览器交互或客户端 JS 渲染的任务（登录态、动态页面操作、渲染验证），不作为普通静态文档搜索入口。Browser Agent 启动失败或目标站点受阻时，普通检索任务立即降级 `search_web` 完成，禁止顺手维修浏览器环境。检索后仍无法确认的信息标注 `NOT_PROVEN`，不凭记忆补全。

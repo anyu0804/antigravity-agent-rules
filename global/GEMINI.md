@@ -27,9 +27,9 @@
 
 ## 多代理委派（Subagent 派工）
 
-- 任务涉及子代理分工、只读验证/日志筛查/哈希对账、跨模块检索、隔离实验，或需通过 MCP 桥驱动外部 Agent 时，先读 [multi-agent-orchestrator Skill](./config/plugins/antigravity-core-rules/skills/multi-agent-orchestrator/SKILL.md) 再派工。
-- 默认只读验证、异构模型复核与脏活（高频扫描、只读校验、长日志定位）统一改用 `Gemini 4 Hydrogen`（不再继续使用 `Gemini 3.8 Flash / 3.8f`）：需确保真跑 `Gemini 4 Hydrogen`（如异构独立复核/代码与闭包审计）时，使用 `swarm(action="add", model="gemini-4-hydrogen-high", workspace="inherit")`；日常轻量扫描可派全局 [flash-verifier](./config/plugins/antigravity-core-rules/agents/flash-verifier.md)（`model: flash`，待服务端 `ModelTierConfig` 切至 Hydrogen 前底层暂由服务端档位映射，播报时勿再称 `3.8f`）；需深度推理或代码施工的子任务用 `Model: "inherit"`。
+- 涉及子代理分工、只读校验/异构复核、隔离实验或跨端 MCP 协同任务时，先读 [multi-agent-orchestrator Skill](./config/plugins/antigravity-core-rules/skills/multi-agent-orchestrator/SKILL.md)。
+- 只读验证/异构复核统一用 `Gemini 4 Hydrogen`（强异构走 `swarm` 指定 `gemini-4-hydrogen-high`，轻量扫描派 [flash-verifier](./config/plugins/antigravity-core-rules/agents/flash-verifier.md)，播报勿称 `3.8f`）；深度施工用 `Model: "inherit"`。
 
 ## 共享待办入口（仅在用户配置时生效）
 
-- **仅在用户显式配置了共享待办文件路径时生效**（未配置时直接忽略本条，切勿主动搜寻或创建待办文件）：接手未完成工作或交接时，读取用户指定的共享待办清单，按当前授权和证据更新对应条目；清单本身不自动构成执行授权，不另复制一套待办。
+- 仅在用户显式配置了共享待办路径时生效（未配置直接忽略，勿主动搜寻或新建）：接手或交接时读取该清单，按授权和证据仅更新对应条目；清单不自动授权，不另建副本。

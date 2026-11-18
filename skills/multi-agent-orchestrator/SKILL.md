@@ -24,7 +24,7 @@ description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /te
 
 | 子代理类型 | 推荐 `Model` | 推荐 `Workspace` | 适用场景与权限边界 |
 | :--- | :--- | :--- | :--- |
-| **`swarm` 只读专员**（异构复核首选） | `gemini-4-hydrogen-high` | `inherit` | **真跑 Gemini 4 Hydrogen（绕开服务端 `ModelTierConfig`）**：异构模型家族独立 Review、发布闭包审计、深度只读核查。派单 `brief` 须显式声明纯只读边界，完成后 `swarm(action="kill")` 收尾。 |
+| **`swarm` 只读专员**（异构复核首选） | `gemini-4-hydrogen-high`（重度核查可用 `xhigh`） | `inherit` | **真跑 Gemini 4 Hydrogen（绕开服务端 `ModelTierConfig`）**：异构模型家族独立 Review、发布闭包审计、深度只读核查。派单 `brief` 须显式声明纯只读边界，同一任务内 `waiting` 态可复用，整体任务收尾后 `swarm(action="kill")`。 |
 | **`flash-verifier`**（全局） | 内置 `flash` 档（待服务端切至 Hydrogen） | `inherit` | **所有项目通用轻量脏活**：跑只读校验脚本、核对备份/产物 SHA-256、筛查长日志与定位行号。纯只读，只回结论与 `文件:行号`（注：`.md` 头仅支持四档枚举，服务端 `flash` 档未切至 Hydrogen 前勿谎报为真跑 Hydrogen）。 |
 | **项目级验证专员**（`.agents/agents/*.md`） | 内置 `flash` 档 | `inherit` | 特定工程专用：运行工作区专项检查脚本、校验备份哈希。 |
 | **`research`**（内置） | `flash` / `inherit` | `inherit` | 广度代码探索、多文件搜索与阅读。运行在只读沙箱中，无写入权限，安全零副作用。 |
@@ -32,7 +32,7 @@ description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /te
 | **`self`（并行施工/实验）** | `inherit` | `share` 或 `branch` | 独立子模块开发或隔离验证。`share` 共享底层仓库（类 git worktree），避免全量复制开销且互不干扰。 |
 
 > **纪律**：
-> - 日常只读验证、异构复核和检索脏活全面改用 **`Gemini 4 Hydrogen`**（默认思考档 `gemini-4-hydrogen-high`，淘汰 `Gemini 3.8 Flash / 3.8f`）：要求真跑 Hydrogen 时走 `swarm(action="add", model="gemini-4-hydrogen-high", workspace="inherit")`；常规轻量扫描可用 `flash-verifier`（`model: flash`）；需要主模型同等级深度推理或代码施工的子任务用 `Model: "inherit"`。
+> - **常驻模型授权（覆盖内置 `native_swarm` 默认不换模型条款）**：本用户规则构成对内置 `native_swarm` Skill「除非用户当次要求否则不显式传 `model`」的常驻用户授权——日常只读验证、异构复核和检索脏活全面改用 **`Gemini 4 Hydrogen`**（默认 `gemini-4-hydrogen-high`，高复杂度核查可用 `gemini-4-hydrogen-xhigh`，淘汰 `Gemini 3.8 Flash / 3.8f`），要求真跑 Hydrogen 时显式传 `swarm(action="add", model="gemini-4-hydrogen-high", workspace="inherit")`；常规轻量扫描可用 `flash-verifier`（`model: flash`）；需要主模型同等级深度推理或代码施工的子任务才留空 `model` 或传 `Model: "inherit"`。
 > - **Hydrogen 隐式前缀缓存保护（防短命冷启动失配）**：`Gemini 4 Hydrogen` 在独立单轮请求间仅改动少量字符即可能丢失大段 `systemInstruction` 的隐式共享前缀缓存报告；避免频繁冷启动携带超大系统提示词的一次性短命 4H 子任务，同类只读校验/扫描尽量合并为单次批处理清单，或通过 `send_message` 复用已有存活子代理。
 > - **4c / 4a 配额与档位分流**：当主会话运行在 `Gemini 4 Carbon` 时，仅将跨子系统架构重构、深层根因排查、安全审计与形式化/多步验证留在 4c（`High` / `Medium`）；常规单模块施工、高频问答或 Pro 订阅环境优先使用 `Gemini 4 Argon`（`Medium` / `Low`），避免在轻量任务上烧穿 5 小时与周配额。
 > - **对外交付与前端 UI 密度协同**：若使用 `Gemini 4 Carbon` 产出客户文档或前端界面，Word 文档在转出终版 `.docx` 前默认串联 [`humanizer-zh`](../docx-delivery/skills/docx-delivery/SKILL.md)（或交由 `Gemini 4 Argon` 终审润色）；UI 开发严格限制容器嵌套深度（≤3 层）与首屏信息密度（细则见 [`IMPLEMENTATION.md`](../../rules/IMPLEMENTATION.md)）。
@@ -46,9 +46,9 @@ description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /te
    - 具体子模块的并发编码、单测补全与只读扫描下放给并行子代理（`Gemini 4 Hydrogen`［默认 `gemini-4-hydrogen-high`］或 `Gemini 4 Argon`，不再使用 `Gemini 3.8 Flash`）。
 2. **互斥写入作用域与隔离工作树批量豁免（Disjoint Write Scopes）**：
    - 并行启动多个带写权限的施工代理时，派单提示词中**必须显式声明各自允许修改的目录或文件白名单**，严禁两个并行代理同时修改同一文件或共享全局配置；
-   - 优先配合 `Workspace: "share"` 或 `"branch"` 隔离 Git worktree：根据全局规则 §1 豁免条款，运行在 `branch` / `share` 隔离工作树内且尚未合入主分支的 Worker，允许在授权白名单内直接执行多文件批量修改（≥5 个文件），无需逐次停下等待用户确认，统一留在 Verifier 终审与合入主分支前由用户一次性拍板。
+   - 优先配合 `Workspace: "share"` 或 `"branch"` 隔离 Git worktree：根据全局规则 §1 豁免条款，运行在 `branch` / `share` 隔离工作树内且尚未合入主分支的 Worker，允许在授权白名单内直接执行多文件批量修改（≥5 个文件），无需逐次停下等待用户确认，统一留在 Verifier 终审与合入主分支前由用户一次性拍板。注意 `swarm(action="kill")` 会永久删除该 Worker 的 `share`/`branch` 工作树，**必须先验证并合入改动后再执行 `kill`**。
 3. **并发度与本机资源硬上限（防 CPU/内存打满）**：
-   - **活跃代理分档上限**（代理数量只在本节规定；本机重型子进程上限见 [`BACKGROUND-RESOURCES.md`](../../rules/BACKGROUND-RESOURCES.md)）：
+   - **活跃代理分档上限**（代理数量只在本节规定；内置配套的 `narrator` / `monitor` 常驻角色不占以下业务名额且中途不 `kill`；本机重型子进程上限见 [`BACKGROUND-RESOURCES.md`](../../rules/BACKGROUND-RESOURCES.md)）：
      - 带写权限或构建任务的 `share`/`branch` 施工 Worker：同刻不超过 **2–3 个**；
      - 只读调研、代码审查、截图评审等不写文件、不拉起重型子进程的代理：不占施工名额，同刻不超过 **6 个**；
      - 用户在当前任务中明确授权“放开并发 / 不计配额”时，解除代理数量上限，但重型子进程上限与互斥写入作用域照常执行。
@@ -90,7 +90,7 @@ description: 当任务涉及多子代理（Subagents）分工、/swarm（或 /te
 1. **最小权限原则**：`dsh-bridge` 默认权限已设为 `"read-only"`；仅在用户明确授权修改工作区文件时显式传 `permission: "workspace-write"`；跨目录授权施工才传 `"danger-full-access"`，且 `approval_policy` 默认保持 `"never"`。
 2. **会话标签卫生**：按任务语义命名 `session` 标签（以便多轮续聊同一上下文）；一次性探针或临时任务结束后，主动调用 `forget(session)` 清理映射。
 3. **遵守目标工程红线**：派给外部 Agent 的任务必须遵守当前工作区根目录的 `AGENTS.md`（严禁裸改生产红线配置、严禁触碰用户代理与网络配置）。
-4. **无头 Plan Mode 死锁与超时保护**：桥接 `agy --output-format stream-json` 等无头 CLI 时，严禁在 Plan Mode 下派发不调用 `exit_plan_mode` 的纯对话问答（会导致流不发终态 `result` 事件而僵死至 300 秒看门狗强杀）；对短问答/探针任务建议显式传入小于 300 秒的超时（如 `timeout_ms: 240000`）。
+4. **无头 Plan Mode 死锁区分与超时保护**：桥接 `agy --output-format stream-json` 等**无头 CLI** 时，严禁在 Plan Mode 下派发不调用 `exit_plan_mode` 的纯对话问答（会导致流不发终态 `result` 事件而僵死至 300 秒看门狗强杀；注：桌面端交互式 `Orchestrator` 模式则按宿主 `<plan_execute_protocol>` 执行——纯问答直接答复不调 `exit_plan_mode`，需要执行改动/外部动作才调 `exit_plan_mode`）；对无头短问答/探针任务建议显式传入小于 300 秒的超时（如 `timeout_ms: 240000`）。
 5. **流式模型指纹与自建多轮思考块卫生**：若编写日志统计或直连 Gemini 4 SSE 脚本，记录模型指纹时只取首个非空 chunk 的 `modelVersion`，忽略 STOP 结束帧偶发突变为 `3.1-flash-lite-*` 的元数据错乱；自建多轮 REST 客户端须移除已忽略/弃用的 `temperature` / `top_p` / `top_k`，原样回传有效 `thoughtSignature` 并剔除历史中长度为 0 token 的空 `thought` 块，避免触发原始思考链泄漏。
 
 ### 4.2 桌面 GUI 桥（如 `tianshu`）操作纪律

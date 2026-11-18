@@ -1,5 +1,5 @@
 {
   "name": "search-routing",
-  "version": "1.0.0",
-  "description": "检索路由：判断何时必须用 search_web 主动检索（时效/外部事实/版本状态/官方文档/公开可验证），何时用 read_url_content 直取，何时禁搜。详细检索 SOP 见 research-routing Skill（按需）。"
+  "version": "1.0.1",
+  "description": "检索路由：判断何时必须用 search_web 主动检索（时效/外部事实/版本状态/官方文档/公开可验证），何时对给定静态 URL 直取，何时禁搜。详细检索 SOP 见 research-routing Skill（按需）。"
 }

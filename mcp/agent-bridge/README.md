@@ -137,3 +137,4 @@ node mcp/agent-bridge/verify.mjs
 4. **Windows 优先**：`.cmd/.bat` 的 shell 判定、UTF-8 写出都按 Windows 实测过；Linux/macOS 理论上可用（`useShell` 恒为 false，直接 exec），但**未实测**，标 `NOT_PROVEN`。
 5. **只做单向派活**：不解析后端的工具调用、不支持中途插话、不支持流式回传。要这些请用成熟插件。
 6. **对接 `agy stream-json` 与 Gemini 4 流式后端防坑**：若后端配置为 `agy --output-format stream-json`，切勿在 Plan Mode 下派发不触发 `exit_plan_mode` 的纯聊天问答（无头流会因缺少终态 `result` 挂起满 300s 看门狗），且建议将单次探针/短任务 `timeout_ms` 设在 `300000` 以内（如 `240000`）；若后端脚本统计 Gemini 4 Carbon 原生 SSE 的 `modelVersion`，请锁定首个非空 chunk 并忽略 STOP 结束帧偶发突变为 `3.1-flash-lite-*` 的元数据异常。
+7. **自建多轮 REST 客户端卫生**：自建多轮 REST 客户端须移除已忽略/弃用的 `temperature` / `top_p` / `top_k`，原样回传有效 `thoughtSignature`，并剔除历史中长度为 0 token 的空 `thought` 块，避免触发原始思考链泄漏。

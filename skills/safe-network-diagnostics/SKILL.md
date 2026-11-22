@@ -85,11 +85,11 @@ ip addr
 ip route
 ```
 
-### 2.5 鉴别大体积工具调用与服务端 5m0s 空闲超时导致的“假性断网”
-若报错为 `The stream was interrupted` 或 `stream idle timeout`，排查网络前先检查上一步是否正在发起大体积 `write_file`（如单次写入 >2,500 字的长篇小说、大文档或大文件）。Antigravity 的 `BidiGenerateContent` 流在服务端生成 Tool Call JSON 参数时采用整包缓冲，参数全部拼装完成前流处于 0 字节静默；当单次写入过大导致后台缓冲耗时超过 90~120s 时，会被网关或客户端空闲超时直接掐断——**这属于单次工具输出块过大，并非用户代理或网络故障**。遇到此类情况直接改用 `write_file` + `Append: true` 分块（单次 ≤1,500–2,000 字）写入即可，无需探测或重启代理。此外，若在晚高峰（尤其使用 `Gemini 4 Carbon` / `Argon`）观察到会话长时间停留在 `Working` 且后端报 `stream idle timeout (5m0s): context deadline exceeded`，这同样是服务端首字延迟抖动叠加后台隐藏自动重试所致，并非本地代理断连，切勿因此重启或改动用户代理。
+### 2.5 鉴别大体积工具调用导致的“假性断网”
+若报错为 `The stream was interrupted` 或 `stream idle timeout`，排查网络前先检查上一步是否正在发起大体积 `write_file`（如单次写入 >2,500 字的长篇小说、大文档或大文件）。Antigravity 的 `BidiGenerateContent` 流在服务端生成 Tool Call JSON 参数时采用整包缓冲，参数全部拼装完成前流处于 0 字节静默；当单次写入过大导致后台缓冲耗时超过 90~120s 时，会被网关或客户端空闲超时直接掐断——**这属于单次工具输出块过大，并非用户代理或网络故障**。遇到此类情况直接改用 `write_file` + `Append: true` 分块（单次 ≤1,500–2,000 字）写入即可，无需探测或重启代理。
 
-### 2.6 Hydrogen 安全过滤器防误拦脱敏（Filter De-escalation）
-在 `Gemini 4 Hydrogen` 下执行网络排查、硬件/底层调试或编写脚本注释时，若十六进制地址/偏移量与安全敏感词同屏出现，极易触发安全过滤器误拦。编写提示词、转译子任务与脚本注释时优先采用中性工程动词（用 `skip` 替 `bypass`、`apply update/fix` 替 `patch`、`inspect` 替 `probe/exploit`）。一旦触发误拦，**严禁在原对话正下方直接发送“重试 / Try again”**（紧邻残留敏感上下文会导致连环拦截），应直接编辑改写被拦消息，或切换至 `Gemini 4 Argon` / `Carbon`（AI Studio 环境可回退 `Gemini 3.8 Flash`）。
+### 2.6 合法排查请求被安全过滤误拦时
+排查网络、硬件或底层问题时，提示词、子任务描述与脚本注释写清操作对象和只读目的（如「只读检查本机代理端口监听」），用准确的工程术语，不用含糊或夸张的措辞。合法请求仍被误拦时，不在原对话下直接反复发「重试」，而是编辑原消息补足上下文后重新提交；仍无法通过就如实告诉用户卡在哪里。
 
 ---
 

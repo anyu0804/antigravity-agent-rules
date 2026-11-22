@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.9] - 2026-11-23
+
+规则一致性与过时条款清理，不新增约束（`global/plugin.json` 升至 `1.3.9`）：
+
+- **`rules/LONG-TASKS.md`**：删除已修复的 `5m0s` 流空闲超时条款（原 §4B，同时消除与全局 `AGENTS.md` §4B「后台资源边界」的编号冲突）；原 §4C 改为 §4A.1，压缩阈值不再写死 256K，改为以客户端或上下文监控实际显示的阈值为准（官方客户端 2026-11 起已升至 512K），按约 70% 主动交接。
+- **模型档位 `4a` → `4n`**：`Gemini 4 Neon` 已基本取代 `Argon` 承担常规施工与高频问答，同步更新 `multi-agent-orchestrator`（4c/4n 分流、并行子代理、终审润色）、`task-intake` §7 复核候选、`chinese-novelist` 阶段分工与 README 模型清单。
+- **证据门禁去模型限定并去重**：`IMPLEMENTATION.md`「证据前置与防作弊硬门禁」不再标注为 Gemini 4 专项，适用所有模型；`task-intake` §2 / §4 改为引用该节，不再重复全文。UI 密度约束去掉「尤其 Carbon」限定。
+- **安全过滤相关措辞改写**：`flash-verifier`、`safe-network-diagnostics` §2.6、`client-maintenance` 删除「用中性动词替换敏感词以免触发过滤器」的写法，改为「如实写清操作对象与目的、用准确工程术语；合法请求被误拦时编辑原消息补足上下文，不原地反复重试」。
+- **其他**：`multi-agent-orchestrator` 修正指向 docx-delivery 的错误 `humanizer-zh` 链接；§4.1 第 5 条 SSE / REST 客户端实现细节改为指向 `mcp/agent-bridge/README.md`；删除多处已完成迁移的「淘汰 3.8 Flash / 3.8f」重复提示；`safe-network-diagnostics` §2.5 删除已修复的晚高峰 `5m0s` 说明。
+
 ## [1.3.8] - 2026-11-19
 
 适配 Antigravity `2.33.0` 双阶段 `Orchestrator` 与新版原生 `native_swarm`，清理已退役工具名并精简常驻规则重复表述（`global/plugin.json` 升至 `1.3.8`、`rules/search-routing.plugin.json` 升至 `1.0.1`）：

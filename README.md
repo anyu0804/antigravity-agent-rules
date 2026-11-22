@@ -283,7 +283,8 @@ flowchart TD
     - **现行推荐：`Gemini 4 Hydrogen`**（默认思考档 `gemini-4-hydrogen-high`，淘汰 `Gemini 3.8 Flash / 3.8f`）。实测宿主事实（`VERIFIED`）：`/swarm` 已在线提供 `gemini-4-hydrogen-low/medium/high/xhigh` 四档并可直接拉起真跑（模型目录在线可用性 `VERIFIED`，长周期高并发压测 `NOT_PROVEN`）；而 `agents/*.md` 头受限于 `ParseModelTier` 仅接受四档枚举（`inherit` / `flash_lite` / `flash` / `pro`），且服务端 `ModelTierConfig` 当前仍将 `flash`（及 `pro`）下发为 `gemini-3.8-flash-tiered`，故需要真跑 Hydrogen 做异构独立复核时须改走 `swarm` 显式指定 `gemini-4-hydrogen-high`。
     - **历史实测基线：`Gemini 3.8 Flash`**（`High` / `model: flash` 3.8f）：此前长期承担高频只读扫描、SHA-256 哈希核对、长篇日志筛查与广度代码搜索的实测基线模型。
 - **已做上线初期适配（单会话基础适配 `VERIFIED`；长周期压测 `NOT_PROVEN`）**：
-  - **Gemini 4 Carbon**（`High` / `Medium` / `Low`，2026-11-10 面向 Ultra 开放）：已基于上线初期的会话实测与模型特性完成 4c/4a 配额分流、`BidiGenerateContent` 分块落盘收紧、UI 容器嵌套密度约束及 `/swarm` 角色分层规则适配，并针对 2026-11 中旬社区抓包复现的工具轮零思考跳读、Hydrogen 安全过滤器误拦与前缀缓存失配、`5m0s` 流空闲超时、256K 压缩防损及高压测试作弊/同族自审盲区内置专项护栏（基础会话运行 `VERIFIED`）；跨数小时的长周期 `/swarm` 多代理高并发压测与新护栏跨会话极端负载规避率仍属 `NOT_PROVEN`。
+  - **Gemini 4 Carbon**（`High` / `Medium` / `Low`，2026-11-10 面向 Ultra 开放）：已基于上线初期的会话实测与模型特性完成 4c/4n 配额分流、`BidiGenerateContent` 分块落盘收紧、UI 容器嵌套密度约束及 `/swarm` 角色分层规则适配，并针对 2026-11 中旬社区抓包复现的工具轮零思考跳读、Hydrogen 安全过滤器误拦与前缀缓存失配、`5m0s` 流空闲超时、256K 压缩防损及高压测试作弊/同族自审盲区内置专项护栏（基础会话运行 `VERIFIED`）；跨数小时的长周期 `/swarm` 多代理高并发压测与新护栏跨会话极端负载规避率仍属 `NOT_PROVEN`。
+  - **Gemini 4 Neon**（`Low` / `Medium` / `High` / `XHigh`）：2026-11 起基本取代 `Argon` 承担常规单模块施工与高频问答，规则内 `4c/4a` 分流已改为 `4c/4n`（长周期压测 `NOT_PROVEN`）。
 - **理论上兼容，未在本机实测（`NOT_PROVEN`）**：
   - Gemini 3.1 Pro、Claude Sonnet 4.6 / Opus 4.6、GPT-5.4 / Codex 等其他支持 Rules / Skills / Lifecycle Hooks 协议的同类模型。
 
